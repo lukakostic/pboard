@@ -1,0 +1,150 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PB|</title>
+
+    <!-- <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet"> -->
+    
+    <script src="external/LEE.js"></script>
+    <!-- <script src="external/SupaJson.js"></script> -->
+    
+    <!-- https://unpkg.com/tiny-markdown-editor/dist/tiny-mde.min.js -->
+    <script src="external/tiny-mde.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="external/tiny-mde.min.css"/>
+    <!-- href="https://unpkg.com/tiny-markdown-editor/dist/tiny-mde.min.css" -->
+
+</head>
+<body>
+    <style> /* Markdown blocks styles*/
+        div.block {
+            /* margin:1px; */
+            margin-right:0;
+            padding:3px;
+            padding-right:0px;
+            background-color:transparent;
+            border-left: 1px solid gray;
+            border-top: 1px solid gray;
+        }
+        div.block > div.children {
+            padding-left:8px;
+            border-top: 1px solid gray;
+        }
+        #blocks > div.block {
+            /* margin-right:1px !important; */
+            padding-right: 3px !important;
+            background-color:lightgray;/* !important;*/
+        }
+        div.block:has( div.children:not(:empty) ) { /* block has children */
+            padding-bottom: 0 !important;
+            /* padding-right: 0 !important;
+            margin-left: 0 !important; */
+        }
+        div.children:not(:empty){
+            margin-top: 3px;
+        }
+        /*
+        div.block:hover{
+            background-color: red !important;
+            padding-left: 0px;
+            border-left: 3px solid black !important;
+        }*/
+    </style>
+        <style> /*Finder styles*/
+            .window{
+                position:absolute;
+                top: 30px;
+                left: 140px;
+                width: 60%;
+                height: 80%;
+                background-color: pink;
+                padding: 50px;
+                box-sizing: border-box; /*da padding ne menja velicinu mog div*/
+              }
+              .finder{
+                position: absolute;
+                left: calc( (20%) / 2 );
+                padding: 4px;
+                width: 80%;
+                height: 80%;
+                background-color: gray;
+                box-sizing: border-box; /*da padding ne menja velicinu mog div*/
+              /*   display: flex;
+                flex-flow: column; */
+              }
+              .finderSuggestions{
+              /*   flex: 1 1 auto; */
+                height:calc(100% - 30px);
+                width:100%;
+                 display: flex;
+                flex-flow: row; 
+                padding:10px;
+              /*   height: 100%; */
+              box-sizing: border-box; /* da bude 100%-padding width*/ 
+                background-color:darkgrey;
+              }
+              .finderSuggestions>div>div{
+                width:auto;
+                box-sizing: border-box; /* da bude 100%-padding width*/
+                background-color:green;
+                margin:4px;
+                height:80px;
+              }
+              .finderSuggestions>div{
+              /*   flex: 1 1 auto; */
+                overflow:scroll;
+              }
+              .finderSuggestions>.direct{
+                background-color:red;
+                resize:horizontal;
+                width:50%;
+              }
+              .finderSuggestions>.recent{
+                background-color:blue;
+                flex-grow: 1;
+              }
+              .finderSearch{
+                  width: 100%;
+                  height:30px;
+                  box-sizing: border-box; /* da bude 100%-padding width*/
+              }
+            </style>
+    <style id="globalStyle">
+        #blocks {
+            --screen-width: 80%;
+            --screen-min-width: 900px;
+            width: calc(max(var(--screen-width),min(100%,var(--screen-min-width))));
+            margin-left: calc((100% - max(var(--screen-width),min(100%,var(--screen-min-width)))) / 2);
+            /* margin-right: calc((100% - max(--screen-width,min(100%,--screen-min-width))));  */
+        }
+        div.editor.TinyMDE>div.TMBlankLine:only-child{
+            line-height: 5px;
+            height: fit-content;
+        }
+    </style>
+    <style id="highlighterStyle"></style> <!-- contents set at runtime -->
+    <!-- <div id="toolbar"></div> -->
+
+    <div id="finderRoot"></div>
+    <div id="root">
+        <div id="blocks"></div>
+    </div>
+
+
+    <script src="Util.ts"></script>
+    <script src="WebSock.ts"></script>
+    <script src="Serializer.ts"></script>
+    <script src="Tag.ts"></script>
+    <script src="Blocks.ts"></script>
+    <script src="Blocks_Visual.ts"></script>
+    <script src="Blocks_Visual2.ts"></script>
+    <script src="Searcher.ts"></script>
+    <script>
+        new Block("test1").makeVisual();
+        new Block("test2").makeVisual(); 
+
+    </script>
+
+</body>
