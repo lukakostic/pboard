@@ -1,16 +1,20 @@
-import {Id,genId, objectA} from './ID.ts';
-import { RegClass } from './Serializer.ts';
+import {Id, objectA} from '../Common.ts';
+import { RegClass } from '../Serializer.ts';
+import { genId } from './pb_server.ts';
 
 export var BLOCKS : {[index:Id]:Block} = {}; //all blocks
+export function BLOCKS_set(o:any){return BLOCKS=o;}
 
-export function DeleteBlocks_unsafe(ids:Id[]){
-    /*
-    delete blocks without checking refCount (if referenced from other blocks)
-    */
-   for(let i=0,l=ids.length;i<l;i++){
-    delete BLOCKS[ids[i]];
-   }
-   //[TODO] report to server
+export const BlkFn = {
+    DeleteBlocks_unsafe(ids:Id[]){
+        /*
+        delete blocks without checking refCount (if referenced from other blocks)
+        */
+        for(let i=0,l=ids.length;i<l;i++){
+            delete BLOCKS[ids[i]];
+        }
+        //[TODO] report to server
+    }
 }
 
 export class Block{  //$$C:string;
@@ -25,19 +29,20 @@ export class Block{  //$$C:string;
     children:Id[];
     attribs:objectA;
 
-    constructor(text=""){
-        // this.$$C=$$C(Block);
-
-        this.id = genId();
-        BLOCKS[this.id] = this;
-        this.text = text;
-
+    constructor(){
+        this.id = "";
+        this.text = "";
         this.refCount = 1;
         this.children = [];
         this.attribs = {};
     }
-    makeVisual(parentElement?:HTMLElement){
-        return (new Block_Visual(this,parentElement));
+    static new(text=""){
+        let b = new Block();
+
+        BLOCKS[b.id = genId()] = b;
+        b.text = text;
+
+        return b;
     }
     // deserialize_fn(){
     //     if(this.children===undefined) this.children = [];

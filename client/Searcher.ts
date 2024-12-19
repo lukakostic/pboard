@@ -1,3 +1,5 @@
+import { TAGS } from "./Tag.ts";
+import { LEEJS } from "./Blocks_Visual.ts";
 
 class Searcher {
     visible:boolean;
@@ -8,17 +10,11 @@ class Searcher {
     directs:string[];
     recents:string[];
     constructor(){
-        this.MakeVisual();
-        this.toggleVisible(false);
-    }
-    toggleVisible(setValue?:boolean){
-        if(setValue!==undefined)
-            this.visible = setValue;
-        else this.visible = !this.visible;
-        
-        this.finder.style.display = this.visible?'block':'none';
-    }
-    MakeVisual(){
+        this.visible = true;
+        this.directs = [];
+        this.recents = [];
+
+        ///   MakeVisible {
         let L = LEEJS;
         // let inp,direct,recent;
         // div($I`window`,[
@@ -36,9 +32,19 @@ class Searcher {
             ])
           ]).a('#finderRoot');
         // ]);
+        ///   MakeVisible }
+
+        this.toggleVisible(false);
+    }
+    toggleVisible(setValue?:boolean){
+        if(setValue!==undefined)
+            this.visible = setValue;
+        else this.visible = !this.visible;
+        
+        this.finder.style.display = this.visible?'block':'none';
     }
     Search(){
-        this.directs = TAGS.filter(t=>t.name.includes(this.input.value));
+        // this.directs = TAGS.filter(t=>t.name.includes(this.input.value));
     }
     AddRecent(){
 
@@ -46,8 +52,8 @@ class Searcher {
     ItemSelected(){
 
     }
-    __ItemClick(event){
-        let item:HTMLElement = event.target;
+    __ItemClick(event:MouseEvent){
+        let item:HTMLElement = event.target as HTMLElement;
         if(item == this.recent || item == this.direct) return;
         
     }

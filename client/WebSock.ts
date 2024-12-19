@@ -1,8 +1,8 @@
-import { BLOCKS } from "../Blocks.ts";
-import { TAGS } from "../Tag.ts";
+import { BLOCKS, BLOCKS_set } from "./Blocks.ts";
+import { TAGS, TAGS_set } from "./Tag.ts";
 
-type ServerMsg = {n:string,d?:any,cb?:Function}; //n=name
-let Server = {
+export type ServerMsg = {n:string,d?:any,cb?:Function}; //n=name
+export let Server = {
     __WebSock : new WebSocket("ws://localhost:8000"),
     __SockOpen : false,
 /*
@@ -13,6 +13,7 @@ new Promise((resolve, reject) => {
         saveAll:"save_all", //data:null
         loadAll:"load_all", //data:null
         load:"load", //data: attrSelector[]
+        eval:"eval", //code as string
     },
     __MsgQueue : [] as {n:string,d?:any,cb:Function}[], // 
 // let msgId = 0;
@@ -28,7 +29,7 @@ new Promise((resolve, reject) => {
                 msg.cb = resolve; 
             });
 
-        this.__MsgQueue.push(msg);
+        this.__MsgQueue.push(msg as any);
         
         if(this.__SockOpen)
             this.__WebSock.send(JSON.stringify([msg.n,msg.d]));
@@ -63,8 +64,8 @@ function LoadAll(){
     Server.sendMsg({n:Server.MsgType.loadAll,cb:((resp:any)=>{
         //let {_TAGS,_BLOCKS} = resp;
 
-        TAGS = resp._TAGS ?? {};
-        BLOCKS = resp._BLOCKS ?? {};
+        TAGS_set(resp._TAGS ?? {});
+        BLOCKS_set(resp._BLOCKS ?? {});
     })});
 
 }

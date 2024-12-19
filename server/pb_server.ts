@@ -4,10 +4,17 @@ import { serveDirWithTs } from "https://deno.land/x/ts_serve@v1.4.4/mod.ts";
 //https://github.com/ayame113/ts-serve
 import * as fs from "jsr:@std/fs";
 
-let TAGS = {}; //tags
-let BLOCKS = {};  //blocks
+declare var Deno : any;
 
-function fn(req:any){
+let __runningId = 0;
+// export var ID : {[index:Id]:any} = {}; //all everything
+export function genId(){return (++__runningId).toString();}
+
+import {TAGS} from './Tag.ts'
+import {BLOCKS,BlkFn} from './Blocks.ts'
+
+
+Deno.serve( function fn(req:any){
     // console.log(req);
     if (req.headers.get("upgrade") !== "websocket") {
         let url = (new URL(req.url));
@@ -29,7 +36,7 @@ function fn(req:any){
     socket.addEventListener("open", () => {
       console.log("a client connected!");
     });
-    socket.addEventListener("message", (event) => {
+    socket.addEventListener("message", (event:MessageEvent) => {
         console.log(event.data);
         let t = event.data;
         if(t.length==0){ socket.send("null"); return; }
@@ -38,7 +45,7 @@ function fn(req:any){
             socket.send(JSON.stringify(handleJson(js)));
         }else if(t[0]=="["){ //is multiple json
             let js = JSON.parse(t);
-            let r = js.map(o=>handleJson(o));
+            let r = js.map((o:any)=>handleJson(o));
             socket.send(JSON.stringify(r));
         }else{ //is just text
             // if(t=="load_all"){
@@ -53,31 +60,41 @@ function fn(req:any){
     function handleJson(json:{n:string,d:any}){
         let name = json.n;
         let data = json.d;
-        if(name == "save_all"){
-            let all = data.all;
-            for(let id in all){
-                Deno.writeTextFileSync(`./pb/${id}.pb`,JSON.stringify(all[id]));
-            }
-            return true;
+        switch(name){
+            case "save_all":
+                let all = data.all;
+                for(let id in all){
+                    Deno.writeTextFileSync(`./pb/${id}.pb`,JSON.stringify(all[id]));
+                }
+                return true;
+            case "save":
+                    return true;
+            case "load_all":
+                    return true;
+            case "load":
+                    return true;
+            case 'eval':
+                return eval(data);
+            default:
+                return null;
         }
-        else return "?";
     }
 
 
-}
+});
 
 // Deno.serve({
 //     port:9020,
 //     transport:'tcp'
 // },fn);
-Deno.serve(fn);
+
 
 
 function LoadAll(){
     //let fileMap = {} as {[index:string]:string};
     let s = "{";
     let prev = false;
-    for(let f of fs.walkSync("./pb",
+    for(let f of fs.walkSync("./FILES/pb",
         {maxDepth:1,
         // exts:[".pb"],
         includeDirs:false,
@@ -96,15 +113,42 @@ function LoadAll(){
     return s;
 }
 function initPbFolders(){
-    //make folders in pb:  blocks, tags
+    //make folders in FILES:
+    // pb:  blocks, tags, extensions
+    // pb_archived:  blocks, tags, extensions
 }
 function SaveAll(all_json:string){
 
 }
+type _AttrPath = AttrPath|string|string[];
+class AttrPath{
+    path: string[];
+    static parse(inp:AttrPath|string|string[]):AttrPath{
+        if(inp instanceof AttrPath) return inp;
+        // if(typeof(inp) == 'string' || ){
+            return new AttrPath(inp);
+        // }else return inp;
+    }
+    constructor(inp:string|string[]){
+        if(typeof(inp) == 'string')
+            this.path = inp.split('.');
+        else if(Array.isArray(inp))
+            this.path = inp;
+        else throw new Error("Cant parse path, not string or array");
+    }
+}
+function Save(attrPath:_AttrPath,data:any){
+    attrPath = AttrPath.parse(attrPath);
 
+}
+function Load(attrPath:_AttrPath){
+    attrPath = AttrPath.parse(attrPath);
+
+}
 
 const MsgType = {
     saveAll:"save_all", //data:null
     loadAll:"load_all", //data:null
     load:"load", //data: attrSelector[]
+    eval:"eval", //data: code as string
 };

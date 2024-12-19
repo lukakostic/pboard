@@ -1,17 +1,23 @@
+/// <reference lib="dom" />
+
+import { BlkFn, Block } from "./Blocks.ts";
+import { Block_Visual } from "./Blocks_Visual2.ts";
+import { rpc} from "./client.ts"
+
 //import {b} from "./BLOCKS.ts";
-declare var TinyMDE : any;
-declare var LEEJS : any;
-type TMDE_InputEvent = {content:string,lines:string[]};
+export declare var TinyMDE : any;
+export declare var LEEJS : any;
+export type TMDE_InputEvent = {content:string,lines:string[]};
 
-let TODO = ()=>{throw new Error("[TODO]");};
+export let TODO = ()=>{throw new Error("[TODO]");};
 
-let selected_block :Block_Visual|null = null;
-let inTextEditMode = false;
+export let selected_block :Block_Visual|null = null;
+export let inTextEditMode = false;
 
-let el_to_BlockVis = new WeakMap<HTMLElement,Block_Visual>();
+export let el_to_BlockVis = new WeakMap<HTMLElement,Block_Visual>();
 
 
-let ACT /*"Actions"*/ = {
+export let ACT /*"Actions"*/ = {
     //double click handling (since if i blur an element it wont register dbclick)
     lastElClicked : null as HTMLElement|null,
     clickTimestamp: 0      as number,
@@ -44,22 +50,22 @@ let ACT /*"Actions"*/ = {
     }
 
 };
-let STATIC = {
+export let STATIC = {
     style_highlighter : document.getElementById('highlighterStyle')!,
     blocks : document.getElementById('blocks')!,
 };
 
-function propagateUpToBlock(el,checkSelf=true):Block_Visual|null{
+export function propagateUpToBlock(el:HTMLElement,checkSelf=true):Block_Visual|null{
     let atr = null;
-    if(checkSelf) if((atr = el.getAttribute("data-b-id"))) return el_to_BlockVis.get(el)!;
+    if(checkSelf) if(el.hasAttribute("data-b-id")) return el_to_BlockVis.get(el)!;
     while(el!=STATIC.blocks && el!=document.body){
-        el = el.parentNode;
-        if((atr = el.getAttribute("data-b-id"))) return el_to_BlockVis.get(el)!;
+        el = el.parentElement!;
+        if(el && el.hasAttribute("data-b-id")) return el_to_BlockVis.get(el)!;
     }
     return null;
 
 }
-function updateSelectionVisual(){
+export function updateSelectionVisual(){
     STATIC.style_highlighter.innerHTML = `div[data-b-id="${selected_block!.block.id}"]{\
     background-color: red !important;\
     padding-left: 0px;\
@@ -67,7 +73,7 @@ function updateSelectionVisual(){
     }`;
 }
 
-function selectBlock(b:Block_Visual,editText:boolean|null=null){
+export function selectBlock(b:Block_Visual,editText:boolean|null=null){
     let _prevSelection = selected_block;
 
     selected_block = b;
@@ -94,7 +100,7 @@ l.$E(
 //(null,"write") //hostElement, write function
 */
 
-const SHIFT_FOCUS = {
+export const SHIFT_FOCUS = {
     firstChild:0,
     parent:1,
     above:2, //allows jumping to children
@@ -102,7 +108,7 @@ const SHIFT_FOCUS = {
     above_notOut:4,
     below_notOut:5,
 }
-function ShiftFocus(block:Block_Visual, shiftFocus:number /*SHIFT_FOCUS*/, skipCollapsed=true){
+export function ShiftFocus(block:Block_Visual, shiftFocus:number /*SHIFT_FOCUS*/, skipCollapsed=true){
     //if skipCollapsed, then it wont go into children of collapsed blocks (not visible).
     let focusElement = null as Block_Visual|null|undefined;
     if(shiftFocus == SHIFT_FOCUS.above_notOut){
@@ -193,11 +199,11 @@ function ShiftFocus(block:Block_Visual, shiftFocus:number /*SHIFT_FOCUS*/, skipC
     }
     return null;
 }
-function NewBlockAfter(afterThisBlock:Block_Visual){
+export async function NewBlockAfter(afterThisBlock:Block_Visual){
     const b = afterThisBlock; //alias
 
     let h = b.el!.parentElement!; //parent node
-    let block = new Block("").makeVisual(h);
+    let block = (await Block.new("")).makeVisual(h);
     
     let next = b.el!.nextSibling;
     if(next!=null)
@@ -207,11 +213,11 @@ function NewBlockAfter(afterThisBlock:Block_Visual){
 
     return block;
 }
-function NewBlockInside(afterThisBlock:Block_Visual){
+export async function NewBlockInside(afterThisBlock:Block_Visual){
     const b = afterThisBlock; //alias
 
     let h = b.el!;//.parentElement!; //parent node
-    let block = new Block("").makeVisual(h);
+    let block = (await Block.new("")).makeVisual(h);
     
     afterThisBlock.block.children.push(block.block.id);
 
@@ -227,17 +233,25 @@ function NewBlockInside(afterThisBlock:Block_Visual){
 
     return block;
 }
-function DeleteBlockVisual(blockVis:Block_Visual,delete_list:Id[]|null=null){
-    function DeleteBlock(block:Block,delete_list:Id[]){
-        if((--block.refCount)==0)
-            delete_list.push(block.id);
+export async function DeleteBlockVisual(blockVis:Block_Visual,delete_list:Block_Visual[]|null=null){
+    function DeleteBlock(block:Block_Visual){
+        if((--block.block.refCount)==0)
+            delete_list!.push(block);
         for(let i=0,l=block.children.length;i<l;i++)
-            DeleteBlock(BLOCKS[block.children[i]]!,delete_list);
+            DeleteBlock(block.children[i]!);
     }
     if(delete_list===null){
         blockVis.el.parentNode?.removeChild(blockVis.el!);
         delete_list = [];
     }
-    DeleteBlock(blockVis.block,delete_list);
-    DeleteBlocks_unsafe(delete_list);
+    DeleteBlock(blockVis);
+
+    for(let i = 0, il=delete_list.length;i<il;i++){
+        let els = document.querySelectorAll(`div[data-id="${delete_list[i].block.id}"]`);
+        for(let j=0,jl=els.length;j<jl;j++)
+            els[j].parentNode?.removeChild(els[j]);
+    }
+    await BlkFn.DeleteBlocks_unsafe(delete_list.map(b=>b.block.id));   
 }
+
+

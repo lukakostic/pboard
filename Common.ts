@@ -1,3 +1,8 @@
+
+export type Id = string;
+
+export type objectA = {[index:string]:any};
+
 function cast<T> (obj: any){
     return obj as T;
 }
