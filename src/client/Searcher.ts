@@ -1,7 +1,17 @@
+import { BlkFn } from "./Blocks.ts";
 import { TAGS } from "./Tag.ts";
-import { LEEJS } from "./Blocks_Visual.ts";
+import { LEEJS } from "./View.ts";
 
-class Searcher {
+export const SearcherMode = {
+    __at0_pages:1, // [0]1 = pages
+    __at0_tags:2,  // [0]2 = tags
+    __at1_find:0,  // [1]0 = find
+    __at1_add:1,   // [1]1 = add
+    pages_find : [1,0],
+    tags_find : [2,0],
+    tags_add : [2,1]
+}
+export class Searcher {
     visible:boolean;
     input:HTMLInputElement;
     finder:HTMLElement;
@@ -9,11 +19,13 @@ class Searcher {
 
     directs:string[];
     recents:string[];
+    mode:  null|any;
+
     constructor(){
         this.visible = true;
         this.directs = [];
         this.recents = [];
-
+        this.mode = null;
         ///   MakeVisible {
         let L = LEEJS;
         // let inp,direct,recent;
@@ -43,8 +55,24 @@ class Searcher {
         
         this.finder.style.display = this.visible?'block':'none';
     }
-    Search(){
+    async Search(){
+        let last = this.input.value.trim();
+        if(last.indexOf(',')!=-1)
+            last = last.split(',').at(-1)!.trim();
+        if(this.mode[0]==SearcherMode.__at0_pages){
+            this.directs = await BlkFn.SearchPages(last,'includes');
+        }else if(this.mode[0]==SearcherMode.__at0_tags){
+            this.directs = await BlkFn.SearchTags(last,'includes');
+        }
         // this.directs = TAGS.filter(t=>t.name.includes(this.input.value));
+    }
+    async Submit(){
+        let items = this.input.value.trim().split(',').map(v=>v.trim());
+        if(this.mode[0]==SearcherMode.__at0_pages){
+        
+        }else if(this.mode[0]==SearcherMode.__at0_tags){
+        
+        }
     }
     AddRecent(){
 
@@ -58,4 +86,4 @@ class Searcher {
         
     }
 }
-let SEARCHER = (new Searcher());
+export let SEARCHER = (new Searcher());

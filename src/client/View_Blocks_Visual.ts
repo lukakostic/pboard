@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { Block } from "./Blocks.ts";
-import { ACT, DeleteBlockVisual, el_to_BlockVis, inTextEditMode,TinyMDE, LEEJS, NewBlockAfter, NewBlockInside, propagateUpToBlock, selectBlock, selected_block, SHIFT_FOCUS, ShiftFocus, STATIC, TMDE_InputEvent } from "./Blocks_Visual.ts";
+import { ACT, DeleteBlockVisual, el_to_BlockVis, inTextEditMode,TinyMDE, LEEJS, NewBlockAfter, NewBlockInside, propagateUpToBlock, selectBlock, selected_block, SHIFT_FOCUS, ShiftFocus, STATIC, TMDE_InputEvent, view } from "./View.ts";
 
 
 STATIC.blocks.addEventListener('keydown',async (e:KeyboardEvent)=>{
@@ -188,6 +188,11 @@ export class Block_Visual{
     }
     parent():Block_Visual|null{
         return propagateUpToBlock( this.el.parentElement! );
+    }
+    index():number{
+        let p = this.parent();
+        if(p) return p.children.indexOf(this);
+        return view!.children.indexOf(this);
     }
     collapseTogle(setValue:boolean|null=null){
         if(setValue!==null) this.collapsed = setValue;

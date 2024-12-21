@@ -1,9 +1,10 @@
 /// <reference lib="dom" />
 
 import { BlkFn, Block, PAGES } from "./Blocks.ts";
-import { Block_Visual } from "./Blocks_Visual2.ts";
+import { Block_Visual } from "./View_Blocks_Visual.ts";
 import { rpc} from "./client.ts"
-import { View_Page } from "./View_Page.ts";
+import { Page_Visual } from "./View_Page_Visual.ts";
+import { SEARCHER } from "./Searcher.ts";
 
 //import {b} from "./BLOCKS.ts";
 export declare var TinyMDE : any;
@@ -12,7 +13,7 @@ export type TMDE_InputEvent = {content:string,lines:string[]};
 
 export let TODO = ()=>{throw new Error("[TODO]");};
 
-export let view :View_Page|null;
+export let view :Page_Visual|null;
 
 export let selected_block :Block_Visual|null = null;
 export let inTextEditMode = false;
@@ -27,8 +28,8 @@ export let el_to_BlockVis = new WeakMap<HTMLElement,Block_Visual>();
             return;
         }
         let p = await Block.newPage(pageName);
-        view = new View_Page(p.id);
-        view.render();
+        view = new Page_Visual();
+        await view.openPage(p.id);
     }else{
         let pageName = prompt("No page open. Enter page name (must be exact):");// || "";
         let srch;
@@ -39,8 +40,8 @@ export let el_to_BlockVis = new WeakMap<HTMLElement,Block_Visual>();
             return;
         }
 
-        view = new View_Page(srch[0]);
-        view.render();
+        view = new Page_Visual();
+        await view.openPage(srch[0]);
     }
 })();
 

@@ -12,7 +12,8 @@ let __runningId = 0;
 export function genId(){return (++__runningId).toString();}
 
 import {TAGS} from './Tag.ts'
-import {BLOCKS,BlkFn} from './Blocks.ts'
+import {BLOCKS,PAGES,BlkFn} from './Blocks.ts'
+import { _AttrPath, AttrPath } from "../AttrPath.ts";
 
 
 Deno.serve( function fn(req:any){
@@ -134,33 +135,26 @@ function initPbFolders(){
     // pb:  blocks, tags, extensions
     // pb_archived:  blocks, tags, extensions
 }
-function SaveAll(all_json:string){
+function client_SaveAll(all_json:string){
 
 }
-type _AttrPath = AttrPath|string|string[];
-class AttrPath{
-    path: string[];
-    static parse(inp:AttrPath|string|string[]):AttrPath{
-        if(inp instanceof AttrPath) return inp;
-        // if(typeof(inp) == 'string' || ){
-            return new AttrPath(inp);
-        // }else return inp;
-    }
-    constructor(inp:string|string[]){
-        if(typeof(inp) == 'string')
-            this.path = inp.split('.');
-        else if(Array.isArray(inp))
-            this.path = inp;
-        else throw new Error("Cant parse path, not string or array");
-    }
-}
-function Save(attrPath:_AttrPath,data:any){
+
+function client_Save(attrPath:_AttrPath,data:any){
     attrPath = AttrPath.parse(attrPath);
 
 }
-function Load(attrPath:_AttrPath){
+function client_Load(attrPath:_AttrPath){
     attrPath = AttrPath.parse(attrPath);
 
+}
+function client_LoadInitial(){
+    return {PAGES:PAGES};
+}
+
+function server_LoadAll(){
+    /*
+    From FILES load following:
+    */
 }
 
 const MsgType = {

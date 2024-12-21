@@ -1,6 +1,7 @@
 import {Id, objectA} from '../Common.ts';
 import { RegClass } from '../Serializer.ts';
 import { genId } from './pb_server.ts';
+import { TAGS } from './Tag.ts';
 
 export var BLOCKS : {[index:Id]:Block} = {}; //all blocks
 export var PAGES : {[index:Id]:true} = {}; //all pages
@@ -8,7 +9,7 @@ export function BLOCKS_set(o:any){return BLOCKS=o;}
 export function PAGES_set(o:any){return BLOCKS=o;}
 
 export const BlkFn = {
-    DeleteBlocks_unsafe(ids:Id[]){
+    DeleteBlocks_unsafe(ids:Id[]):boolean{
         /*
         delete blocks without checking refCount (if referenced from other blocks)
         */
@@ -16,9 +17,9 @@ export const BlkFn = {
             if(PAGES[ids[i]]) delete PAGES[ids[i]];
             delete BLOCKS[ids[i]];
         }
-        //[TODO] report to server
+        return true;
     },
-    InsertBlockChild(parent:Id, child:Id, index:number ){
+    InsertBlockChild(parent:Id, child:Id, index:number ):Id[]{
         const l = BLOCKS[parent].children;
         if(index >= l.length){
             l.push(child);
@@ -27,7 +28,7 @@ export const BlkFn = {
         }
         return l;
     },
-    SearchPages(title:string,mode:'exact'|'startsWith'|'includes'='exact'){
+    SearchPages(title:string,mode:'exact'|'startsWith'|'includes'='exact'):Id[]{
         let pages = Object.keys(PAGES).map(k=>BLOCKS[k]);
         if(mode=='exact'){
             return pages.filter(p=>p.pageTitle == title).map(p=>p.id);
@@ -37,12 +38,38 @@ export const BlkFn = {
             return pages.filter(p=>p.pageTitle?.includes(title)).map(p=>p.id);
         }
         return [];
-    }
+    },
+    SearchTags(title:string,mode:'exact'|'startsWith'|'includes'='exact'):Id[]{
+        let pages = Object.values(TAGS);//.map(k=>BLOCKS[k]);
+        if(mode=='exact'){
+            return pages.filter(p=>p.name == title).map(p=>p.id);
+        }else if(mode=='startsWith'){
+            return pages.filter(p=>p.name?.startsWith(title)).map(p=>p.id);
+        }else if(mode=='includes'){
+            return pages.filter(p=>p.name?.includes(title)).map(p=>p.id);
+        }
+        return [];
+    },
+    HasTagBlock(tagId:Id,blockId:Id):boolean{
+        return TAGS[tagId].blocks.indexOf(blockId)!=-1;
+    },
+    TagBlock(tagId:Id,blockId:Id):boolean{
+        if(this.HasTagBlock(tagId,blockId)) return false;
+        TAGS[tagId].blocks.push(blockId);
+        BLOCKS[blockId].tags.push(tagId);
+        return true;
+    },
+    RemoveTagBlock(tagId:Id,blockId:Id):boolean{
+        if(this.HasTagBlock(tagId,blockId) == false) return false;
+        TAGS[tagId].blocks.splice(TAGS[tagId].blocks.indexOf(blockId),1);
+        BLOCKS[blockId].tags.splice(BLOCKS[blockId].tags.indexOf(tagId),1);
+        return true;
+    },
 
 }
 
-export class Block{  //$$C:string;
-    static _serializable_default = {children:[],attribs:{},refCount:1};
+export class Block{
+    static _serializable_default = {children:[],tags:[],attribs:{},refCount:1};
 
     pageTitle?:string;  //if has title then its a page!
 
@@ -51,6 +78,7 @@ export class Block{  //$$C:string;
     text:string;
     //usually-empty
     children:Id[];
+    tags:Id[];
     attribs:objectA;
 
     constructor(){
@@ -58,6 +86,7 @@ export class Block{  //$$C:string;
         this.text = "";
         this.refCount = 1;
         this.children = [];
+        this.tags = [];
         this.attribs = {};
     }
     static new(text=""):Block{

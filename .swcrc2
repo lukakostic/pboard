@@ -1,0 +1,20 @@
+{
+    "jsc": {
+      "experimental": {
+        "plugins": [
+          [
+            "@swc/plugin-transform-imports",
+            {
+              "^(.*?)\\.ts(x)?$": {
+                "skipDefaultConversion": true,
+                "transform": "{{matches.[1]}}.js"
+              }
+            }
+          ]
+        ]
+      }
+    },
+    "module": {
+      "type": "commonjs"
+    }
+}
