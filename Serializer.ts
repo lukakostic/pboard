@@ -1,4 +1,4 @@
-import { objectA } from "./ID.ts";
+import { objectA } from "./Common.ts";
 
 // let __SerializableClasses = [Block];
 let __classToId = new WeakMap<any,string>();

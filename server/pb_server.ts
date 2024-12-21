@@ -1,6 +1,7 @@
 // import { serve } from "https://deno.land/std@0.177.0/http/mod.ts";
 
-import { serveDirWithTs } from "https://deno.land/x/ts_serve@v1.4.4/mod.ts";
+// import { serveDirWithTs } from "https://deno.land/x/ts_serve@v1.4.6/mod.ts";
+import { serveDirWithTs } from "jsr:@ayame113/ts-serve";
 //https://github.com/ayame113/ts-serve
 import * as fs from "jsr:@std/fs";
 
@@ -15,13 +16,20 @@ import {BLOCKS,BlkFn} from './Blocks.ts'
 
 
 Deno.serve( function fn(req:any){
+    let url = (new URL(req.url));
+    let path = url.pathname; //  "/API/smth/newSmt
+    let opts = url.search;  //  "?x=2&y=3"
+    let hash = url.hash;   //   "#abcd"h"
+    if(path == "/" || path==""){
+        //redirect to index.html
+        return new Response("", {
+            status: 307,
+            headers: { Location: "/client/index.html" },
+          });
+    }
     // console.log(req);
     if (req.headers.get("upgrade") !== "websocket") {
-        let url = (new URL(req.url));
-        let path = url.pathname; //  "/API/smth/newSmth"
         if(path.startsWith("/API")){ //is api call
-            let opts = url.search;  //  "?x=2&y=3"
-            let hash = url.hash;   //   "#abcd"
         }else return serveDirWithTs(req); 
 
         //let normalizedPath = decodeURIComponent(new URL(req.url).pathname);
@@ -46,7 +54,10 @@ Deno.serve( function fn(req:any){
         }else if(t[0]=="["){ //is multiple json
             let js = JSON.parse(t);
             let r = js.map((o:any)=>handleJson(o));
-            socket.send(JSON.stringify(r));
+            if(r instanceof Error)
+                socket.send("error"+JSON.stringify(r));
+            else
+                socket.send(JSON.stringify(r));
         }else{ //is just text
             // if(t=="load_all"){
             //     socket.send(JSON.stringify(LoadAll()));
@@ -74,7 +85,13 @@ Deno.serve( function fn(req:any){
             case "load":
                     return true;
             case 'eval':
-                return eval(data);
+                try{
+                    let r = eval(data);
+                    if(r===undefined) r=null;
+                    return r;
+                }catch(e){
+                    return e;
+                }
             default:
                 return null;
         }

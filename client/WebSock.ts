@@ -1,4 +1,5 @@
 import { BLOCKS, BLOCKS_set } from "./Blocks.ts";
+import { throwIf } from "./client.ts";
 import { TAGS, TAGS_set } from "./Tag.ts";
 
 export type ServerMsg = {n:string,d?:any,cb?:Function}; //n=name
@@ -50,7 +51,14 @@ Server.__WebSock.onopen = (event) => {
 
 Server.__WebSock.onmessage = (event) => {
     let m = Server.__MsgQueue.shift()!;
-    m.cb(event.data);
+    let dataTxt = event.data as string;
+    let data;
+    if(dataTxt.startsWith("error")){
+        data = new Error(JSON.parse(dataTxt.substring("error".length)));
+    }else{
+        data = JSON.parse(dataTxt);
+    }
+    m.cb(data);
     // console.log(event.data);
 };
 
@@ -62,6 +70,7 @@ function SaveAll(){
 
 function LoadAll(){
     Server.sendMsg({n:Server.MsgType.loadAll,cb:((resp:any)=>{
+        throwIf(resp);
         //let {_TAGS,_BLOCKS} = resp;
 
         TAGS_set(resp._TAGS ?? {});

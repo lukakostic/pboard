@@ -1,0 +1,1 @@
+clear && deno run --allow-all server/pb_server.ts 

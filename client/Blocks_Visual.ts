@@ -1,8 +1,9 @@
 /// <reference lib="dom" />
 
-import { BlkFn, Block } from "./Blocks.ts";
+import { BlkFn, Block, PAGES } from "./Blocks.ts";
 import { Block_Visual } from "./Blocks_Visual2.ts";
 import { rpc} from "./client.ts"
+import { View_Page } from "./View_Page.ts";
 
 //import {b} from "./BLOCKS.ts";
 export declare var TinyMDE : any;
@@ -11,11 +12,37 @@ export type TMDE_InputEvent = {content:string,lines:string[]};
 
 export let TODO = ()=>{throw new Error("[TODO]");};
 
+export let view :View_Page|null;
+
 export let selected_block :Block_Visual|null = null;
 export let inTextEditMode = false;
 
 export let el_to_BlockVis = new WeakMap<HTMLElement,Block_Visual>();
 
+(async function InitialOpen(){ //ask user to open some page (or make a page if none exist)
+    if(Object.keys(PAGES).length==0){
+        let pageName = prompt("No pages exist. Enter a new page name:");// || "";
+        if(pageName == null){
+            window.location.reload();
+            return;
+        }
+        let p = await Block.newPage(pageName);
+        view = new View_Page(p.id);
+        view.render();
+    }else{
+        let pageName = prompt("No page open. Enter page name (must be exact):");// || "";
+        let srch;
+
+        //[TODO] use searcher, not this prompt.
+        if(pageName == null || (srch=await BlkFn.SearchPages(pageName,'includes')).length < 1){
+            window.location.reload();
+            return;
+        }
+
+        view = new View_Page(srch[0]);
+        view.render();
+    }
+})();
 
 export let ACT /*"Actions"*/ = {
     //double click handling (since if i blur an element it wont register dbclick)
@@ -199,40 +226,37 @@ export function ShiftFocus(block:Block_Visual, shiftFocus:number /*SHIFT_FOCUS*/
     }
     return null;
 }
-export async function NewBlockAfter(afterThisBlock:Block_Visual){
-    const b = afterThisBlock; //alias
 
-    let h = b.el!.parentElement!; //parent node
-    let block = (await Block.new("")).makeVisual(h);
-    
-    let next = b.el!.nextSibling;
+export async function NewBlockAfter(thisBlock:Block_Visual){
+    let h = thisBlock.el!.parentElement!; //parent node
+    let parentBlockVis = propagateUpToBlock(h); //Get parent or Page of view / window.
+    let parentBlock = (parentBlockVis == null)? (view!.pageId) : (parentBlockVis.block.id);
+
+    let thisBlockIdx = Array.from(h.children).indexOf(thisBlock.el!);
+    if(thisBlockIdx<0)throw new Error("Could not determine new index.");
+    let blockVis = (await Block.new("")).makeVisual(h);
+    await BlkFn.InsertBlockChild(parentBlock,blockVis.block.id,thisBlockIdx+1);
+    let next = thisBlock.el!.nextSibling;
     if(next!=null)
-        h.insertBefore(block.el!, next);
+        h.insertBefore(blockVis.el!, next);
     
-    selectBlock(block,inTextEditMode);
-
-    return block;
+    selectBlock(blockVis,inTextEditMode);
+    return blockVis;
 }
-export async function NewBlockInside(afterThisBlock:Block_Visual){
-    const b = afterThisBlock; //alias
-
-    let h = b.el!;//.parentElement!; //parent node
-    let block = (await Block.new("")).makeVisual(h);
+export async function NewBlockInside(thisBlock:Block_Visual){
+    let h = thisBlock.el!;//.parentElement!; //parent node
+    let blockVis = (await Block.new("")).makeVisual(h);
+    await BlkFn.InsertBlockChild(thisBlock.block.id,blockVis.block.id,thisBlock.block.children.length); //as last
     
-    afterThisBlock.block.children.push(block.block.id);
+    // thisBlock.block.children.push(blockVis.block.id);
 
-    afterThisBlock.childrenHolderEl.appendChild(block.el);
-    afterThisBlock.children.push(block);
+    thisBlock.childrenHolderEl.appendChild(blockVis.el);
+    thisBlock.children.push(blockVis);
 
-    /*
-    let next = b.el!.nextSibling;
-    if(next!=null)
-        h.insertBefore(block.el!, next);
-    */
-    selectBlock(block,inTextEditMode);
-
-    return block;
+    selectBlock(blockVis,inTextEditMode);
+    return blockVis;
 }
+
 export async function DeleteBlockVisual(blockVis:Block_Visual,delete_list:Block_Visual[]|null=null){
     function DeleteBlock(block:Block_Visual){
         if((--block.block.refCount)==0)
