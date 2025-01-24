@@ -1,0 +1,130 @@
+
+
+
+class Block{
+    static _serializable_default = {children:[],tags:[],attribs:{},refCount:1};
+
+    /*
+    pageTitle?:string;  //if has title then its a page!
+
+    id:Id;
+    refCount:number;
+    text:string;
+    //usually-empty
+    children:Id[];
+    tags:Id[];
+    attribs:objectA;
+
+    constructor(){
+        this.id = "";
+        this.text = "";
+        this.refCount = 1;
+        this.children = [];
+        this.tags = [];
+        this.attribs = {};
+    }*/
+    
+    id:Id;
+    
+    _pageTitle?:string;  //if has title then its a page!
+
+    _refCount:number;
+    _text:string;
+    //usually-empty
+    _children:TProxyArraySetter<Id>;
+    _tags:TProxyArraySetter<Id> ;
+    _attribs:objectA;
+
+    get pageTitle(){return this._pageTitle;}
+    set pageTitle(v){this.set('_pageTitle',v);}
+    //pageTitle_set(v:string){ this.set('_pageTitle',v); return v;}
+    get refCount(){return this._refCount;}
+    get text(){return this._text;}
+    set text(v){this.set('_text',v);}
+    //text_set(v:string){ this.set('_text',v); return v;}
+    get children(){return this._children;}
+    // set children(v:any[]){this._children.splice(0,this._children.length,...v);}
+    get tags(){return this._tags;}
+    // set tags(v:any[]){this._tags.splice(0,this._tags.length,...v);}
+    get attribs(){return this._attribs;}
+
+    constructor(){
+        this.id = "";
+        this._text = "";
+        this._refCount = 1;
+        this._children = ProxyArraySetter.__new(this,"_children");
+        this._tags = ProxyArraySetter.__new(this,"_tags");
+        this._attribs = {};
+    }
+    __serialize__(){ //called by serializer.
+        return Object.setPrototypeOf({
+            id:this.id,
+            pageTitle:this._pageTitle,
+            refCount:this._refCount,
+            text:this._text,
+            children:this._children, /*serializer handles as normal array*/
+            tags:this._tags, /*serializer handles as normal array*/
+            attribs:this._attribs
+        },Block.prototype);
+    }
+    static __deserialize__(o:any){
+        // for(let k in Block._serializable_default){
+        //     if(o[k]===undefined)
+        //         o[k] = Block._serializable_default[k];
+        // }
+        let b = new Block();
+        b.id = o.id;
+        b._pageTitle = o.pageTitle;
+        b._refCount = o.refCount;
+        b._text = o.text;
+        b._children = ProxyArraySetter.__new(b,"_children",o.children);
+        b._tags = ProxyArraySetter.__new(b,"_tags",o.tags);
+        b._attribs = o.attribs;
+        return b;
+    }
+    async set(path:_AttrPath,value:any,doAssign=true){
+        path = AttrPath.parse(path);
+        console.log("SETTING ",path);
+        let field = path[0];
+        if(field.startsWith("_")){
+            if(doAssign)
+                (this as any)[field] = value;
+            field = field.substring(1);
+            path[0] = field;
+        }else{
+            if(doAssign){
+                if((this as any)['_'+field] !== undefined)
+                    (this as any)['_'+field] = value;
+            }
+        }
+        return await rpc(`server_set`,["BLOCKS",this.id,...path],value);
+    }
+    static async new(text=""):Promise<Block>{
+        let b = (await rpc(`Block.new`,text)) as Block;
+        _BLOCKS[b.id] = b;
+        return b;
+    }
+    static async newPage(title=""):Promise<Block>{
+        let b = await rpc(`Block.newPage`,title) as Block;
+        _BLOCKS[b.id] = b;
+        PAGES[b.id] = true;
+        return b;
+    }
+    makeVisual(parentElement?:HTMLElement){
+        return (new Block_Visual(this,parentElement));
+    }
+    // deserialize_fn(){
+    //     if(this.children===undefined) this.children = [];
+    //     if(this.attribs===undefined) this.attribs = {};
+    // }
+    // serialize_fn(){
+    //     let s = `{${SerializeClass(this)
+    //     },id:${this.id},text:"${EscapeStr(this.text)}"`;
+    //     if(this.children.length>0) s+=`,children:${JSON_Serialize(this.children)}`;
+    //     if(this.attribs!=null /*empty object*/) s+=`,attribs:${JSON_Serialize(this.attribs)}`;
+    //     return s+"}";
+    // }
+
+};
+RegClass(Block);
+

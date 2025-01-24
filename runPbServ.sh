@@ -1,1 +1,1 @@
-clear && deno run --allow-all server/pb_server.ts 
+clear && cd ./built && deno run --allow-all ./server/SERVER.js 

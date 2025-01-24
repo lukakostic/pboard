@@ -1,0 +1,9 @@
+{
+  "devDependencies": {
+    "@ice/swc-plugin-remove-export": "^0.3.0",
+    "@swc/cli": "^0.5.2",
+    "@swc/core": "^1.10.1",
+    "@swc/plugin-transform-imports": "^6.0.2",
+    "swc-plugin-transform-remove-imports": "^3.0.1"
+  }
+}

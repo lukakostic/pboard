@@ -1,0 +1,71 @@
+
+const BlkFn = {
+    // async DeleteBlocks_unsafe(ids:Id[]):Promise<boolean>{
+    //     return await rpc(`BlkFn.DeleteBlocks_unsafe`,ids);
+    // },
+    async RemoveTagFromBlock(blockId:Id,tagId:Id){
+        await rpc(`BlkFn.RemoveTagFromBlock`,blockId,tagId);
+        if(_TAGS[tagId]){
+            const t = _TAGS[tagId];
+            const bl = t.blocks;
+            bl.splice(bl.indexOf(blockId),1); //remove block from tag
+            if(_BLOCKS[blockId]){
+                const b = _BLOCKS[blockId]!;
+                b.tags.splice(b.tags.indexOf(tagId),1); //remove tag from block
+            }
+        }
+    },
+    async RemoveAllTagsFromBlock(blockId:Id){
+        await rpc(`BlkFn.RemoveAllTagsFromBlock`,blockId);
+        if(_BLOCKS[blockId]){
+            const b = _BLOCKS[blockId];
+            for(let i = 0; i<b.tags.length; i++){
+                const t = _TAGS[b.tags[i]]!;
+                if(!t)continue;
+                const bl = t.blocks;
+                bl.splice(bl.indexOf(blockId),1); //remove block from tag
+            }
+            b._tags = [];//    b.tags.splice(b.tags.indexOf(tagId),1); //remove tag from block
+        }
+    },
+    async DeleteBlockOnce(id:Id){
+        await rpc(`BlkFn.DeleteBlockOnce`,id);
+        await ReLoadAllData();
+    },
+    async DeleteBlockEverywhere(id:Id){
+        await rpc(`BlkFn.DeleteBlockEverywhere`,id);
+        await ReLoadAllData();
+    },
+    async InsertBlockChild(parent:Id, child:Id, index:number ):Promise<Id[]>{
+        const nl = await rpc(`BlkFn.InsertBlockChild`,parent,child,index);
+        //replace children list with new list (in-place as to not loose references)
+        const l = (await BLOCKS[parent])._children;
+        l.splice(0,l.length,...nl); //in-place remove all and insert new
+        return l;
+    },
+    async SearchPages(title:string,mode:'exact'|'startsWith'|'includes'='exact'):Promise<Id[]>{
+        return await rpc(`BlkFn.SearchPages`,title,mode);
+    },
+    async SearchTags(title:string,mode:'exact'|'startsWith'|'includes'='exact'):Promise<Id[]>{
+        return await rpc(`BlkFn.SearchTags`,title,mode);
+    },
+    async HasTagBlock(tagId:Id,blockId:Id):Promise<boolean>{
+        return await rpc(`BlkFn.HasTagBlock`,tagId,blockId);
+    },
+    async TagBlock(tagId:Id,blockId:Id):Promise<boolean>{
+        if(await rpc(`BlkFn.TagBlock`,tagId,blockId)){
+            (await TAGS[tagId])._blocks.push(blockId);
+            (await BLOCKS[blockId])._tags.push(tagId);
+            return true;
+        }
+        return false;
+    },
+    async RemoveTagBlock(tagId:Id,blockId:Id):Promise<boolean>{
+        if(await rpc(`BlkFn.RemoveTagBlock`,tagId,blockId)){
+            (await TAGS[tagId])._blocks.splice(_TAGS[tagId]!._blocks.indexOf(blockId),1);
+            (await BLOCKS[blockId])._tags.splice(_BLOCKS[blockId]!._tags.indexOf(tagId),1);
+            return true;
+        }
+        return false;
+    },
+}

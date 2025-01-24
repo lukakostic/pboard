@@ -1,0 +1,12 @@
+{
+    "deno.enable": true,
+    "emeraldwalk.runonsave": {
+        "commands": [
+          {
+            // Run whenever any file is saved
+            "match": "src/*/.*",
+            "cmd": "bash compile.sh"
+          }
+        ]
+      }
+}

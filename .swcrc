@@ -1,20 +1,48 @@
 {
+
+  "module": {
+    "resolveFully":true,
+    "type": "es6"
+
+		// "noInterop": true
+},
     "jsc": {
-      "experimental": {
-        "plugins": [
-          [
-            "@swc/plugin-transform-imports",
-            {
-              "^(.*?)\\.ts(x)?$": {
-                "skipDefaultConversion": true,
-                "transform": "{{matches.[1]}}.js"
-              }
-            }
-          ]
-        ]
-      }
-    },
-    "module": {
-      "type": "commonjs"
+        "baseUrl": ".",
+        "parser":{
+          "syntax": "typescript"  
+        },
+        "target":"es2024",
+        "experimental": {
+            "plugins": [
+              // [
+              //   "swc-plugin-transform-remove-imports",
+              //   {
+              //     "test": "\\.(xxts|less|css)$"
+              //   }
+              // ]
+              [
+                "@swc/plugin-transform-imports",
+                {
+                  "^(.*?)\\.ts(x)?$": {
+                    "skipDefaultConversion": true,
+                    "transform": "{{matches.[1]}}.js"
+                  }
+                }
+              ]
+              // ,
+              // [
+              //   "@ice/swc-plugin-remove-export",
+              //   {
+                  
+              //   }
+              // ]
+            ]
+        },
+        
+        // "paths": {
+        //   "./*": ["./*"],
+        //   // "@Core": ["./src/client/client.ts"]
+        //   // "@modules/*": ["./src/*"]
+        // }
     }
 }

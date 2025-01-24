@@ -1,8 +1,7 @@
-import { BlkFn } from "./Blocks.ts";
-import { TAGS } from "./Tag.ts";
-import { LEEJS } from "./View.ts";
 
-export const SearcherMode = {
+declare var LEEJS : any;
+
+const SearcherMode = {
     __at0_pages:1, // [0]1 = pages
     __at0_tags:2,  // [0]2 = tags
     __at1_find:0,  // [1]0 = find
@@ -11,7 +10,7 @@ export const SearcherMode = {
     tags_find : [2,0],
     tags_add : [2,1]
 }
-export class Searcher {
+class Searcher {
     visible:boolean;
     input:HTMLInputElement;
     finder:HTMLElement;
@@ -86,4 +85,4 @@ export class Searcher {
         
     }
 }
-export let SEARCHER = (new Searcher());
+let SEARCHER = (new Searcher());
