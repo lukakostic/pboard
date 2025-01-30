@@ -1,60 +1,39 @@
 
-// type TBLOCKS = {[index:Id]:Block};
-// type TBLOCKSn = {[index:Id]:Block|null};
-// var _BLOCKS : TBLOCKSn = {}; //all blocks
-// var BLOCKS = new Proxy({},{
-//     async get(target,key:string,receiver){
-//         if(_BLOCKS[key] === null)
-//             _BLOCKS[key] = await load(["BLOCKS",key]) as Block;
-//         return _BLOCKS[key] as Block;
-//     },
-//     set(target,key,newValue,receiver){
-//         throw new Error("Cannot set whole object value.");
-//         return true;
-//     }
-// }) as {[index:Id]:Promise<Block>};
+var PROJECT = new ProjectClass();
+var SEARCH_STATISTICS = new SearchStatistics();
+
 type TBLOCKSn = {[index:Id]:Block|null};
-var _BLOCKS : TBLOCKSn = {};
-const BLOCKS = ServerProxyObject.new<Id,Block>("BLOCKS");
+var _BLOCKS : TBLOCKSn = {};  // all blocks
+async function BLOCKS( idx :Id , depth :number = 1 ):Promise<Block>{
+    if(_BLOCKS[idx]===null)
+        await loadBlock(idx,depth);
+    return _BLOCKS[idx]!;
+}
 
 type TPAGES = {[index:Id]:true};
 var PAGES : TPAGES = {}; //all pages
 
-// type TTAGS = {[index:Id]:Tag};
-// type TTAGSn = {[index:Id]:Tag|null};
-// var _TAGS : TTAGSn = {}; //all blocks
-// var TAGS = new Proxy({},{
-//     async get(target,key:string,receiver){
-//         if(_TAGS[key] === null)
-//             _TAGS[key] = await load(["TAGS",key]) as Tag;
-//         return _TAGS[key] as Tag;
-//     },
-//     set(target,key,newValue,receiver){
-//         throw new Error("Cannot set whole object value.");
-//         return true;
-//     }
-// }) as {[index:Id]:Promise<Tag>};
 type TTAGSn = {[index:Id]:Tag|null};
-var _TAGS : TTAGSn = {};
-const TAGS = ServerProxyObject.new<Id,Tag>("TAGS");
-
-
-async function SaveAll(){
-    TODO();
-    Server.sendMsg({n:Server.MsgType.saveAll,d:{TAGS:_TAGS,BLOCKS:_BLOCKS}});
+var _TAGS : TTAGSn = {};  // all tags
+async function TAGS( idx :Id , depth :number = 1 ):Promise<Tag>{
+    if(_TAGS[idx]===null)
+        await loadTag(idx,depth);
+    return _TAGS[idx]!;
 }
 
+
+
+/*
 async function LoadAll(){
     TODO();
     Server.sendMsg({n:Server.MsgType.loadAll,cb:((resp:any)=>{
         throwIf(resp);
-        //let {_TAGS,_BLOCKS} = resp;
 
         _TAGS = __Deserialize(resp._TAGS ?? {});
         _BLOCKS = __Deserialize(resp._BLOCKS ?? {});
     })});
 
-}
+}*/
 async function ReLoadAllData(){
     let newData = await rpc(`client_ReLoadAllData`,{
         BLOCKS:_BLOCKS,
@@ -75,12 +54,8 @@ async function rpc(code:string|Function, ...fnArgs:any):Promise<any>{
         code = `(${code}).apply(null,__Deserialize(${JSON_Serialize(fnArgs)}));`;
     }
     console.log("rpc after:",code);
-    // else{
 
-    //     // code = `(()=>{let f =()=>${code};return f();})();`;
-    //     //done like so to ensure it works even if code has ; or not,
-    // }
-    let resp = await Server.sendMsg({n:Server.MsgType.eval,d:code});
+    const resp = await CMsg_eval({code});
     console.log("rpc resp:",resp);
     throwIf(resp);
     return resp;
@@ -90,22 +65,84 @@ function throwIf(obj:any){
         throw obj;
     }
 }
-// function newBlock(text){
-//     return rpc(t=>(new Block(t)),text);
-//     //return Server.sendMsg({n:Server.MsgType.eval,d:`return (new Block(${JSON.stringify(text)}))`});
-// }
 
 async function LoadInitial(){
-    let initial = await rpc(`client_LoadInitial`) as any;
-    PAGES =  __Deserialize(initial.PAGES);
+
+    /*
+    Load:  PROJECT , SEARCH_STATISTICS , PAGES
+    all ids for:  _BLOCKS, _TAGS
+    on demand objects for: _BLOCKS, _TAGS.
+    */
+    const resp = await CMsg_loadInitial(null);
+    if(resp instanceof Error)
+        throw resp;
+    else if(resp === false){ // server has no saved state (fresh install) 
+
+    }else{
+        //let json = resp;//__Deserialize(resp);
+        PAGES =  JSON_Deserialize(resp.PAGES as any);
+        SEARCH_STATISTICS =  JSON_Deserialize(resp.SEARCH_STATISTICS as any);
+        PROJECT =  JSON_Deserialize(resp.PROJECT as any);   
+    
+        _BLOCKS = {};
+        for(let k in resp.ids_BLOCKS)
+            _BLOCKS[k] = null;
+        _TAGS = {};
+        for(let k in resp.ids_TAGS)
+            _TAGS[k] = null;
+    
+    }
 }
+async function SaveAll(){
+    //    Server.sendMsg({n:Server.MsgType.saveAll,d:{TAGS:_TAGS,BLOCKS:_BLOCKS}});
+    if(DIRTY._.length==0 || DIRTY.error!==null) return;
+        
+    // send to server all dirty objects.
+    // most importantly also send the ""
+    let oldChangeHash = PROJECT.running_change_hash;
+    PROJECT.genChangeHash();
+    //let packet : TMsg_saveAll_C2S["d"] = {hash:oldChangeHash,data:[]};
+    let packet : TCMsg_saveAll__DataOrDeleted[] = [];
+    DIRTY._.forEach(p=>{
+        if(p[2]===undefined){ // thing was deleted.
+            packet.push({path:[p[0],p[1]],deleted:true});
+        }else{
+            let evalStr = DIRTY.evalStringResolve(p[0],p[1]);
+            try{
+                packet.push({path:[p[0],p[1]],data:JSON_Serialize(eval(evalStr))!});
+            }catch(e){
+                DIRTY.error = e as Error;
+                throw e;
+            }
+        }
+    });
+    const resp = await CMsg_saveAll({hash:oldChangeHash,data:packet});
+    if(resp instanceof Error){
+        DIRTY.error = resp;
+        throw resp; // !!!!!!!!!!!!!!
+    }
+}
+
 async function loadBlock(blockId:Id,depth:number) {
     // path = AttrPath.parse(path);
     console.log("Loading block:",blockId);
-    let newBLOCKS_partial = await rpc(`client_loadBlock`,blockId,depth);
+    let newBLOCKS_partial = await CMsg_loadBlock({id:blockId,depth});//rpc(`client_loadBlock`,blockId,depth);
+    //throwIf(newBLOCKS_partial);
+    if(newBLOCKS_partial instanceof Error){throw newBLOCKS_partial}else
     for(let key in newBLOCKS_partial){
         console.log("Loading block id:",key);
-        _BLOCKS[key] = newBLOCKS_partial[key];
-    }
-   
+        _BLOCKS[key] = JSON_Deserialize( newBLOCKS_partial[key] );
+    }  
+}
+async function loadTag(blockId:Id,depth:number) {
+    TODO("LoadTag");
+    // path = AttrPath.parse(path);
+    console.log("Loading tag:",blockId);
+    let newBLOCKS_partial = await CMsg_loadTag({id:blockId,depth});//await rpc(`client_loadBlock`,blockId,depth);
+    //throwIf(newBLOCKS_partial);
+    if(newBLOCKS_partial instanceof Error){throw newBLOCKS_partial}else
+    for(let key in newBLOCKS_partial){
+        console.log("Loading tag id:",key);
+        _TAGS[key] = JSON_Deserialize( newBLOCKS_partial[key] );
+    }  
 }

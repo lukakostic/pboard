@@ -2,7 +2,9 @@
 
 shopt -s extglob
 
-bash ./src_buildSys/execute.sh
+bash ./deleteAll.sh
+
+#bash ./src_buildSys/execute.sh    ### ne treba nam vise codegen
 
 (cat -s ./src/*.{ts,js} ./src/client/*.{ts,js} > ./built/client/CLIENT.ts ;\
 npx swc ./built/client/CLIENT.ts -o ./built/client/CLIENT.js ) &

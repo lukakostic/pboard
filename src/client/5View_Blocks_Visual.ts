@@ -143,37 +143,6 @@ class Block_Visual{
                     e.preventDefault();
                     e.stopPropagation();
                     
-                    // var keyboardEvent = new KeyboardEvent('keydown',{
-                    //     key:"Enter",
-
-                    //     // 'keydown', // event type: keydown, keyup, keypress
-                    //     // true, // bubbles
-                    //     // true, // cancelable
-                    //     // window, // view: should be window
-                    //     // false, // ctrlKey
-                    //     // false, // altKey
-                    //     // false, // shiftKey
-                    //     // false, // metaKey
-                    //     // 13, // keyCode: unsigned long - the virtual key code, else 0
-                    //     // 0,
-                    // });
-
-
-                    // var initMethod = typeof keyboardEvent.initKeyboardEvent !== 'undefined' ? 'initKeyboardEvent' : 'initKeyEvent';
-                    // keyboardEvent[initMethod](
-                    // 'keydown', // event type: keydown, keyup, keypress
-                    // true, // bubbles
-                    // true, // cancelable
-                    // window, // view: should be window
-                    // false, // ctrlKey
-                    // false, // altKey
-                    // false, // shiftKey
-                    // false, // metaKey
-                    // 13, // keyCode: unsigned long - the virtual key code, else 0
-                    // 0, // charCode: unsigned long - the Unicode character associated with the depressed key, else 0
-                    // );
-                    
-                    //e.target.dispatchEvent(keyboardEvent);
                 }else{
                     cancelEvent = false;
                 }

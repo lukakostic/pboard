@@ -8,7 +8,13 @@ let TODO = (txt:string="")=>{throw new Error("[TODO]"+txt);};
 let WARN = (txt:string="")=>{};
 type Ttodo = any; //when youre too lazy to specify a full type
 
-Array.prototype.remove = function(item:any){
+/** json string <--> T  strong type class */ 
+type JSONstr<T> = {
+    parse : T;
+    json : string;
+}
+
+(Array.prototype as any).remove = function(item:any){
     while(true){
         let idx = this.indexOf(item);
         if(idx!=-1)
@@ -18,11 +24,34 @@ Array.prototype.remove = function(item:any){
     return this;
 }
 
-function cast<T> (obj: any){
+function cast<T> (obj: any) : T{
     return obj as T;
 }
 function castIsnt(obj: any, ...isnt: any){
     for(let i=0,il=isnt.length;i<il;i++)
         if(obj === isnt[i]) throw new Error("Cast failed.");
     return obj;
+}
+
+/** num to base 92 string (35[#]-126[~] ascii) */
+function numToShortStr(n :number) :string{
+    let s = "";
+    if(n<0){s="-";n=-n;}
+    while(true){
+        s+=String.fromCharCode((n%92)+35);
+        if(n<92) break;
+        n/=92;
+    }
+    return s;
+}
+
+
+function filterNullMap( mapObj :any ) :any{
+    const m = {} as any;
+    for(let k in mapObj){
+        const v = mapObj[k];
+        if(v!==null)
+            m[k] = mapObj[k];
+    }
+    return m;
 }

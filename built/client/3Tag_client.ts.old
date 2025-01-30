@@ -1,6 +1,6 @@
 
 
-class Tag{
+class Tag_Cl{
     static _serializable_default = {attribs:{},parentTagId:"",childrenTags:{}};
     id:Id;
     _name : string;
@@ -70,4 +70,4 @@ class Tag{
         return t;
     }
 }
-RegClass(Tag);
+RegClass(Tag_Cl);

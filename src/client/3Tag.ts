@@ -16,23 +16,27 @@ class Tag{
         this.blocks = [];
         this.attribs = {};
     }
-    static new(name:string,parentTag:Id=""){
+    DIRTY(){DIRTY.mark("_TAGS",this.id);}
+    DIRTY_deleted(){DIRTY.mark("_TAGS",this.id,undefined);}
+    static DIRTY_deletedS(id:Id){DIRTY.mark("_TAGS",id,undefined);}
+    static async new(name:string,parentTag:Id=""){
         let t = new Tag();
         let parent :Tag|null = null;
         
         if(parentTag!=""){
-            parent = TAGS[parentTag];
+            parent = await TAGS(parentTag);
             if(!parent) throw new Error(`Invalid parent: #${parentTag} not found`);
         }
         
-        TAGS[t.id = genId()] = t;
+        _TAGS[t.id = PROJECT.genId()] = t;
         t.name = name;
 
-        if(parentTag!=""){
+        if(parentTag!=""){ 
             t.parentTagId = parentTag;
             parent!.childrenTags.push(t.id);    
         }
 
+        t.DIRTY();
         return t;
     }
 }

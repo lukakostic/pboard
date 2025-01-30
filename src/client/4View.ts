@@ -91,7 +91,7 @@ function selectBlock(b:Block_Visual,editText:boolean|null=null){
  */
 async function CheckAndHandle_PageNoBlocks(){
     if(view.pageId == "") return;
-    let p = (await BLOCKS[view.pageId]);
+    let p = (await BLOCKS(view.pageId));
     if(p.children.length>0)return;
     NewBlockInsidePage();
 }
@@ -239,7 +239,7 @@ async function NewBlockInside(thisBlock:Block_Visual){
 async function NewBlockInsidePage(){
     // let h = view.el!;//.parentElement!; //parent node
     let blockVis = (await Block.new("")).makeVisual();
-    await BlkFn.InsertBlockChild(view.pageId,blockVis.block.id, (await BLOCKS[view.pageId]).children.length); //as last
+    await BlkFn.InsertBlockChild(view.pageId,blockVis.block.id, (await BLOCKS(view.pageId)).children.length); //as last
     
     // thisBlock.block.children.push(blockVis.block.id);
 

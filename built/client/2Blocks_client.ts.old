@@ -1,7 +1,7 @@
 
 
 
-class Block{
+class Block_Cl{
     static _serializable_default = {children:[],tags:[],attribs:{},refCount:1};
 
     /*
@@ -126,5 +126,5 @@ class Block{
     // }
 
 };
-RegClass(Block);
+RegClass(Block_Cl);
 

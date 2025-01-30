@@ -1,1 +1,0 @@
-var $IS_CLIENT$ = undefined;

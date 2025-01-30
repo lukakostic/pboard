@@ -1,18 +1,18 @@
 
 type ServerMsg = {n:string,d?:any,cb?:Function}; //n=name
-let Server = {
+var Server = {
     __WebSock : new WebSocket("ws://localhost:9020"),
     __SockOpen : false,
 /*
 new Promise((resolve, reject) => {
     WebSock.onopen(()=>resolve());
 });*/
+    /*
     MsgType:{
-        saveAll:"save_all", //data:null
-        loadAll:"load_all", //data:null
+        saveAll:"saveAll", //data:null
         load:"load", //data: attrSelector[]
         eval:"eval", //code as string
-    },
+    },*/
     __MsgQueue : [] as {n:string,d?:any,cb:Function}[], // 
 // let msgId = 0;
 // msg: {text:null,cb:null}         //
@@ -30,7 +30,7 @@ new Promise((resolve, reject) => {
         this.__MsgQueue.push(msg as any);
         
         if(this.__SockOpen)
-            this.__WebSock.send(JSON_Serialize({n:msg.n,d:msg.d}));
+            this.__WebSock.send(JSON_Serialize({n:msg.n,d:msg.d})!);
 
         if(promise!==null) return promise;
     }
@@ -39,13 +39,14 @@ new Promise((resolve, reject) => {
 Server.__WebSock.onopen = (event) => {
     Server.__SockOpen = true;
     for(let i = 0; i < Server.__MsgQueue.length; i++) //send unsent ones
-        Server.__WebSock.send(JSON_Serialize({n:Server.__MsgQueue[i].n,d:Server.__MsgQueue[i].d}));
+        Server.__WebSock.send(JSON_Serialize({n:Server.__MsgQueue[i].n,d:Server.__MsgQueue[i].d})!);
         
 
     console.log("Open");
     // WebSock.send("Here's some text that the server is urgently awaiting!");
 };
 
+WARN("Da ne radim .shift nego attachujem ID na sent message i uklonim appropriate ID.")
 Server.__WebSock.onmessage = (event) => {
     let m = Server.__MsgQueue.shift()!;
     let dataTxt = event.data as string;

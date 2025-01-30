@@ -18,7 +18,7 @@ function RegClass(_class:any){ /*Serialize class.*/
     __IdToClass[id] = _class; //register class name to class object
     return id;
 }
-
+class Unknown_SerializeClass{}
 function SerializeClass(originalObj:any,_class?:any){ //obj is of some class
     let cls = _class ?? Object.getPrototypeOf(originalObj).constructor;
     console.log(cls);
@@ -100,7 +100,7 @@ function JSON_Serialize(obj:any){//,  key?:string,parent?:any){
     }
     return JSON.stringify(obj);
 }
-function __Deserialize(o:objectA):any{
+function __Deserialize(o:objectA ,allowUnknownClasses=false):any{
     console.log("deserializing:",o);
     if(o === null) return null;
     if(Array.isArray(o))
@@ -115,11 +115,17 @@ function __Deserialize(o:objectA):any{
     let _class:any = null;
     let defaults:any = {};
     if(classId !== undefined){
-        delete o.$$C;
         _class = __IdToClass[classId];
-        if(_class == null) throw new Error("Class not recognised:",classId);
+        delete o.$$C;
+        if(_class == null){
+            if(allowUnknownClasses)
+                _class = Unknown_SerializeClass.prototype;
+            else
+                throw new Error("Class not recognised:",classId);
+        }
         Object.setPrototypeOf(o,_class); //applies in-place to object
         defaults = _class._serializable_default ?? {};
+        
     }
     // end Deserialize class
 
@@ -150,9 +156,9 @@ function __Deserialize(o:objectA):any{
     // if(o.deserialize_fn) o.deserialize_fn();
     return o;
 }
-function JSON_Deserialize(str:string):any{
+function JSON_Deserialize(str:string,allowUnknownClasses=false):any{
     console.log(str);
-    return __Deserialize( JSON.parse(str) );
+    return __Deserialize( JSON.parse(str) , allowUnknownClasses);
 }
 
 /*******************

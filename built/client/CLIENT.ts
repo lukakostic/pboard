@@ -8,7 +8,13 @@ let TODO = (txt:string="")=>{throw new Error("[TODO]"+txt);};
 let WARN = (txt:string="")=>{};
 type Ttodo = any; //when youre too lazy to specify a full type
 
-Array.prototype.remove = function(item:any){
+/** json string <--> T  strong type class */ 
+type JSONstr<T> = {
+    parse : T;
+    json : string;
+}
+
+(Array.prototype as any).remove = function(item:any){
     while(true){
         let idx = this.indexOf(item);
         if(idx!=-1)
@@ -18,7 +24,7 @@ Array.prototype.remove = function(item:any){
     return this;
 }
 
-function cast<T> (obj: any){
+function cast<T> (obj: any) : T{
     return obj as T;
 }
 function castIsnt(obj: any, ...isnt: any){
@@ -27,6 +33,27 @@ function castIsnt(obj: any, ...isnt: any){
     return obj;
 }
 
+/** num to base 92 string (35[#]-126[~] ascii) */
+function numToShortStr(n :number) :string{
+    let s = "";
+    if(n<0){s="-";n=-n;}
+    while(true){
+        s+=String.fromCharCode((n%92)+35);
+        if(n<92) break;
+        n/=92;
+    }
+    return s;
+}
+
+function filterNullMap( mapObj :any ) :any{
+    const m = {} as any;
+    for(let k in mapObj){
+        const v = mapObj[k];
+        if(v!==null)
+            m[k] = mapObj[k];
+    }
+    return m;
+}
 // let __SerializableClasses = [Block];
 // let __classToId = new WeakMap<any,string>();
 let __IdToClass : {[index:string]:any} = {};
@@ -46,7 +73,7 @@ function RegClass(_class:any){ /*Serialize class.*/
     __IdToClass[id] = _class; //register class name to class object
     return id;
 }
-
+class Unknown_SerializeClass{}
 function SerializeClass(originalObj:any,_class?:any){ //obj is of some class
     let cls = _class ?? Object.getPrototypeOf(originalObj).constructor;
     console.log(cls);
@@ -128,7 +155,7 @@ function JSON_Serialize(obj:any){//,  key?:string,parent?:any){
     }
     return JSON.stringify(obj);
 }
-function __Deserialize(o:objectA):any{
+function __Deserialize(o:objectA ,allowUnknownClasses=false):any{
     console.log("deserializing:",o);
     if(o === null) return null;
     if(Array.isArray(o))
@@ -143,11 +170,17 @@ function __Deserialize(o:objectA):any{
     let _class:any = null;
     let defaults:any = {};
     if(classId !== undefined){
-        delete o.$$C;
         _class = __IdToClass[classId];
-        if(_class == null) throw new Error("Class not recognised:",classId);
+        delete o.$$C;
+        if(_class == null){
+            if(allowUnknownClasses)
+                _class = Unknown_SerializeClass.prototype;
+            else
+                throw new Error("Class not recognised:",classId);
+        }
         Object.setPrototypeOf(o,_class); //applies in-place to object
         defaults = _class._serializable_default ?? {};
+        
     }
     // end Deserialize class
 
@@ -178,9 +211,9 @@ function __Deserialize(o:objectA):any{
     // if(o.deserialize_fn) o.deserialize_fn();
     return o;
 }
-function JSON_Deserialize(str:string):any{
+function JSON_Deserialize(str:string,allowUnknownClasses=false):any{
     console.log(str);
-    return __Deserialize( JSON.parse(str) );
+    return __Deserialize( JSON.parse(str) , allowUnknownClasses);
 }
 
 /*******************
@@ -188,109 +221,189 @@ function JSON_Deserialize(str:string):any{
 
  NO CIRCULAR REFERENCES.
  No arrays with special properties or classes.
-*********************/
-type _AttrPath = string|string[];
-class AttrPath{
-    // path: string[];
-    static parse(inp:string|string[]):string[]{
-        if(typeof(inp) == 'string')
-            return inp.split('.');
-        else if(Array.isArray(inp))
-            return inp;
-        else throw new Error("Cant parse path, not string or array");
-        /*
-        else if(Array.isArray((inp as any).path)){
-            return Object.setPrototypeOf(inp,AttrPath);
-        }
-        // if(typeof(inp) == 'string' || ){
-        return new AttrPath(inp);
-        // }else return inp;
-        */
-    }
-    
-    // static shift(path:string[]){
-    //     if(path.length>0){
-    //         return path.shift();
-    //     }else return null;
-    // }
+*********************//************* 
+Messages are mostly client -> server.
+Msg = code of message
+TCMsg = type of client request
+TSMsg = type of server response
+CMsg = send client -> server
+**************/
+/** */
 
-}
-// RegClass(AttrPath);
+const _MakeMsg = <Req,Resp> (msg_code:string) => 
+    (async (d:Req) : Promise<Resp> => 
+        (await Server.sendMsg({n:msg_code,d})) as Resp  );
+
+type TCMsg_saveAll__DataOrDeleted = {path:[string,Id|undefined]} & ({data:string} | {deleted:true});
+const Msg_saveAll = 'saveAll';
+type TCMsg_saveAll = {hash:string,data:TCMsg_saveAll__DataOrDeleted[]};
+type TSMsg_saveAll = Error|true;
+const CMsg_saveAll = _MakeMsg<TCMsg_saveAll,TSMsg_saveAll>(Msg_saveAll);
+
+const Msg_eval = 'eval';
+type TCMsg_eval = {code:string};
+type TSMsg_eval = Error|any;
+const CMsg_eval = _MakeMsg<TCMsg_eval,TSMsg_eval>(Msg_eval);
+
+const Msg_loadInitial = 'loadInitial';
+type TCMsg_loadInitial = null;
+type TSMsg_loadInitial = Error|false|{ // false if nothing already saved (fresh install)
+    PROJECT : JSONstr<ProjectClass>,
+    SEARCH_STATISTICS : JSONstr<SearchStatistics>,
+    PAGES : JSONstr<TPAGES>,
+
+    ids_BLOCKS : Id[],
+    ids_TAGS : Id[],
+};
+const CMsg_loadInitial = _MakeMsg<TCMsg_loadInitial,TSMsg_loadInitial>(Msg_loadInitial);
+
+const Msg_loadBlock = 'loadBlock';
+type TCMsg_loadBlock = {id:Id,depth:number};
+type TSMsg_loadBlock = Error|{[index:Id]:string};//JSONstr<Block>};
+const CMsg_loadBlock = _MakeMsg<TCMsg_loadBlock,TSMsg_loadBlock>(Msg_loadBlock);
+
+const Msg_loadTag = 'loadTag';
+type TCMsg_loadTag = {id:Id,depth:number};
+type TSMsg_loadTag = Error|{[index:Id]:string};//JSONstr<Tag>};
+const CMsg_loadTag = _MakeMsg<TCMsg_loadTag,TSMsg_loadTag>(Msg_loadTag);
+
+type ServerMsg = {n:string,d?:any,cb?:Function}; //n=name
+var Server = {
+    __WebSock : new WebSocket("ws://localhost:9020"),
+    __SockOpen : false,
 /*
-What are common diff situations?
-1. new (nested) key (and value)
-2. (nested) key removed
-3. promena vrednosti ((nested) key)
+new Promise((resolve, reject) => {
+    WebSock.onopen(()=>resolve());
+});*/
+    /*
+    MsgType:{
+        saveAll:"saveAll", //data:null
+        load:"load", //data: attrSelector[]
+        eval:"eval", //code as string
+    },*/
+    __MsgQueue : [] as {n:string,d?:any,cb:Function}[], // 
+// let msgId = 0;
+// msg: {text:null,cb:null}         //
+// msg: {promise:true, text:null}   //promisify automatically
+    sendMsg(msg:ServerMsg){
+        // msgId++;
+        // msg.id = msgId;
 
-ako se menja higher level key, brise se lower level key
-*/
-class Diff{
-    path:string[];
-    value:any;
-    constructor(p:_AttrPath,v:any){
-        this.path = AttrPath.parse(p);
-        this.value = v;
-    }
-}
-RegClass(Diff);
-class DiffList{
-    list:Diff[];
-    constructor(){
-        this.list = [];
-    }
-    push(d:Diff){
-        for(let i=0;i<this.list.length;i++){
-            this.list[i].path
-        }
-        this.list.push(d);
-    }
-}
-RegClass(DiffList);let $IS_CLIENT$ = true; // some functions check this if shared code on S and C/** Clone of some server object. */
-class ServerProxyObject<Tkey,Tvalue>{
-    serverObjName:string; // BLOCKS
-    // objCached:TMap<Id,Tvalue|null>; // BLOCKS cached value
-    objProxy:TMap<Id,Promise<Tvalue>>; // proxy to BLOCK which handles async loading
-    objCached_getFn : Function;
+        let promise:any = null;
+        if(msg.cb === undefined)
+            promise = new Promise((resolve,reject)=>{
+                msg.cb = resolve; 
+            });
 
-    get objCached() :TMap<Id,Tvalue|null> {
-        return this.objCached_getFn();
-    }
-    constructor(serverObjName:string){
-        this.serverObjName = serverObjName;
-        // this.objCached = {};
-        this.objCached_getFn = new Function(`return _${serverObjName};`);
-        //new Function()
+        this.__MsgQueue.push(msg as any);
+        
+        if(this.__SockOpen)
+            this.__WebSock.send(JSON_Serialize({n:msg.n,d:msg.d})!);
 
-        const SELF = this;
-        this.objProxy = new Proxy({},{
-            async get(target,key:string,receiver){
-                if(SELF.objCached[key] === null) //no cached value present
-                    SELF.objCached[key] = await rpc(`((k)=>(${SELF.serverObjName}[k]))`,key) as Tvalue;
-                return SELF.objCached[key] as Tvalue;
-            },
-            set(target,key,newValue,receiver){
-                throw new Error("Cannot set whole object value. Use the 'set' method.");
-                return true;
+        if(promise!==null) return promise;
+    }
+};
+
+Server.__WebSock.onopen = (event) => {
+    Server.__SockOpen = true;
+    for(let i = 0; i < Server.__MsgQueue.length; i++) //send unsent ones
+        Server.__WebSock.send(JSON_Serialize({n:Server.__MsgQueue[i].n,d:Server.__MsgQueue[i].d})!);
+        
+
+    console.log("Open");
+    // WebSock.send("Here's some text that the server is urgently awaiting!");
+};
+
+WARN("Da ne radim .shift nego attachujem ID na sent message i uklonim appropriate ID.")
+Server.__WebSock.onmessage = (event) => {
+    let m = Server.__MsgQueue.shift()!;
+    let dataTxt = event.data as string;
+    console.log("websock recv:",dataTxt);
+    let data;
+    if(dataTxt.startsWith("error")){
+        data = new Error(JSON_Deserialize(dataTxt.substring("error".length)));
+    }else{
+        data = JSON_Deserialize(dataTxt);
+    }
+    m.cb(data);
+    // console.log(event.data);
+};
+
+// WebSock.send("Here's some text that the server is urgently awaiting!");
+type _DIRTY_Entry = [string,Id|undefined,false|undefined];
+var DIRTY = {
+    _ : [] as _DIRTY_Entry[],
+    error : null as null|Error,
+
+    mark(singleton:string,id?:any,isDeleted:false|undefined=false) :void{
+        // check if user didnt make mistake in strEval string: 
+        try{eval(this.evalStringResolve(singleton,id));}catch(e){throw Error("Eval cant find object "+singleton+" id "+id+". :"+e);}
+    
+        while(true){ //remove same or longer/more-specific already marked  (["BLOCKS",1] should shadow ["BLOCKS",1,2,3] as its more general)
+            
+            for(let i = 0; i<this._.length;i++){
+                if(this._[i][0] == singleton){
+                    if(id!==undefined && this._[i][1]===undefined) return; //theyre more specific than us!
+                    if((id===this._[i][1]) || (this._[i][1]!==undefined && id===undefined)){
+                        this._.splice(i,1);
+                        break;
+                    }
+                }
             }
-        }) as {[index:string]:Promise<Tvalue>};   
+            // let idx = this.findAnyMatch(singleton,id);
+            // if(idx==-1) break;
+            // if(id===undefined && this._[idx][1]!==undefined)
+            // // if(this._[idx].length>strEval.length) // we are less specific than existing, delete existing
+            //     this._.splice(idx,1);
+            // else if(this._[idx][id] === id)
+            // // else if(this._[idx].length==strEval.length && this._[idx][1] == strEval[1])
+            //     return;  // exact copy of us is already saved. quit.
+            // else return; // its actually less specific than us!! we should quit.
+        }
+        this._.push([singleton,id,isDeleted]);
+    },
+    // findAnyMatch(singleton:string,id?:any){
+    //     for(let i = 0; i<this._.length;i++){
+    //         if(this._[i][0] == singleton){
+    //             //if(this._[i][1]===undefined)
+    //                 return i;
+    //         }
+    //         // let len = this._[i].length; if(len>strEval.length) len=strEval.length;
+    //         // let matchesAll = true;
+    //         // for(let j=0;j<len;j++){
+    //         //     if(this._[i][j] != strEval[j])
+    //         //         matchesAll = false;
+    //         // }
+    //         // if(matchesAll) return i;
+    //     }
+    //     return -1;
+    // },
+    evalStringResolve(singleton:string,id?:any):string{
+        let finalEvalStr = singleton;
+        if(id!==undefined){
+            finalEvalStr += `["${id}"]`;
+        }
+        //else throw Error("Unexpected evalStr length: " + JSON.stringify(strEval));
+        return finalEvalStr;
     }
-    static new<Tkey,Tvalue>(serverObjName:string) :TMap<Id,Promise<Tvalue>>{
-    //:[ TMap<Id,Tvalue|null>, TMap<Id,Promise<Tvalue>>, ServerProxyObject<Tkey,Tvalue> ]{
-        let t = new ServerProxyObject<Tkey,Tvalue>(serverObjName);
-        return t.objProxy;
-        //return [t.objCached,t.objProxy,t];
-    }
-};async function set(path:_AttrPath,value:any){
+};
+
+// function unmark_DIRTY(strEval:[string,...any]) :void{
+//     if(_DIRTY[strEval])
+//         delete _DIRTY[strEval];
+//}
+/*async function set(path:_AttrPath,value:any){
     // path=AttrPath.parse(path);
     return (await rpc(`server_set`,path,value));
-}
+}*/
 
 /**
  * Like a normal array but it mocks pop,push,splice functions, 
  * so when called it calls this.set() function of object.
  * Telling it the array was modified.
  */
-class ProxyArraySetter{
+/*
+class ProxyArraySetter_NO{
     __obj:any; __field:string;
     constructor(obj:any,field:string){
         this.__obj = obj;
@@ -322,127 +435,354 @@ class ProxyArraySetter{
         return r;
     }
 }
+*/
 /** same as array. */
-declare type TProxyArraySetter<T> = T[];
+//declare type TProxyArraySetter_NO<T> = T[];
+class ProjectClass {
+    running_change_hash: string;
+    __runningId : number;
 
-type ServerMsg = {n:string,d?:any,cb?:Function}; //n=name
-let Server = {
-    __WebSock : new WebSocket("ws://localhost:9020"),
-    __SockOpen : false,
+    DIRTY(){DIRTY.mark("PROJECT");}
+
+    genChangeHash():string{
+        this.running_change_hash = numToShortStr(
+                (Date.now() - (new Date(2025,0,1)).getTime())*1000 +
+                Math.floor(Math.random()*1000)
+            );
+        this.DIRTY();
+        return this.running_change_hash;
+    }
+    
+    genId():string{
+        ++this.__runningId;
+        this.DIRTY();
+        return this.__runningId.toString();
+    }
+    
+    constructor(){
+        this.running_change_hash = "-";
+        this.__runningId = 1;
+    }
+}
+RegClass(ProjectClass);
+
+declare var LEEJS : any;
+
+const SearcherMode = {
+    __at0_pages:1, // [0]1 = pages
+    __at0_tags:2,  // [0]2 = tags
+    __at1_find:0,  // [1]0 = find
+    __at1_add:1,   // [1]1 = add
+    pages_find : [1,0],
+    tags_find : [2,0],
+    tags_add : [2,1]
+}
+class Searcher {
+    visible:boolean;
+    input:HTMLInputElement;
+    finder:HTMLElement;
+    direct:HTMLElement;recent:HTMLElement;
+
+    directs:string[];
+    recents:string[];
+    mode:  null|any;
+
+    constructor(){
+        this.visible = true;
+        this.directs = [];
+        this.recents = [];
+        this.mode = null;
+        ///   MakeVisible {
+        let L = LEEJS;
+        // let inp,direct,recent;
+        // div($I`window`,[
+          this.finder = L.div(L.$I`finder`,[
+            this.input = L.input(L.$I`finderSearch`,{type:"text"})(),
+            L.div(L.$I`finderSuggestions`,{
+                $bind:this, $click:this.__ItemClick
+            },[
+                this.direct = L.div(L.$I`direct`,[
+                    L.div("Item"),L.div("Item"),L.div("Item"),
+                ])(),
+                this.recent = L.div(L.$I`recent`,[
+                    L.div("Item"),L.div("Item"),
+                ])(),
+            ])
+          ]).a('#finderRoot');
+        // ]);
+        ///   MakeVisible }
+
+        this.toggleVisible(false);
+    }
+    toggleVisible(setValue?:boolean){
+        if(setValue!==undefined)
+            this.visible = setValue;
+        else this.visible = !this.visible;
+        
+        this.finder.style.display = this.visible?'block':'none';
+    }
+    async Search(){
+        let last = this.input.value.trim();
+        if(last.indexOf(',')!=-1)
+            last = last.split(',').at(-1)!.trim();
+        if(this.mode[0]==SearcherMode.__at0_pages){
+            this.directs = await BlkFn.SearchPages(last,'includes');
+        }else if(this.mode[0]==SearcherMode.__at0_tags){
+            this.directs = await BlkFn.SearchTags(last,'includes');
+        }
+        // this.directs = TAGS.filter(t=>t.name.includes(this.input.value));
+    }
+    async Submit(){
+        let items = this.input.value.trim().split(',').map(v=>v.trim());
+        if(this.mode[0]==SearcherMode.__at0_pages){
+        
+        }else if(this.mode[0]==SearcherMode.__at0_tags){
+        
+        }
+    }
+    AddRecent(){
+
+    }
+    ItemSelected(){
+
+    }
+    __ItemClick(event:MouseEvent){
+        let item:HTMLElement = event.target as HTMLElement;
+        if(item == this.recent || item == this.direct) return;
+        
+    }
+}
+var SEARCHER = (new Searcher());
+
+class SearchStatistics{
+
+    maxRecents : 20;
+    recentlySearched_Pages: [Id,string][];
+    recentlySearched_Tags: [Id,string][];
+    recentlyVisited_Pages: [Id,string][];
+    recentlyAdded_Tags: [Id,string][];
+
+    constructor(){
+        this.maxRecents = 20; 
+        this.recentlySearched_Pages = [];
+        this.recentlySearched_Tags = [];
+        this.recentlyVisited_Pages = [];
+        this.recentlyAdded_Tags = [];
+    }
+
+    DIRTY(){DIRTY.mark("SEARCH_STATISTICS");}
+        
+
+    
+    push_list(list:[Id,string][],id_name:[Id,string]){
+        list.splice(0,0,id_name); // add as first
+        if(list.length>this.maxRecents) // limit max length
+            list.splice(this.maxRecents,list.length-this.maxRecents);
+        this.DIRTY();
+    }
+    async recentlySearched_Pages_push(id:Id){
+        this.push_list(this.recentlySearched_Pages,[id,(await BLOCKS(id)).pageTitle!]);
+    }
+    async recentlySearched_Tags_push(id:Id){
+        this.push_list(this.recentlySearched_Tags,[id,(await TAGS(id)).name]);
+    }
+    async recentlyVisited_Pages_push(id:Id){
+        this.push_list(this.recentlyVisited_Pages,[id,(await BLOCKS(id)).pageTitle!]);
+    }
+    async recentlyAdded_Tags_push(id:Id){
+        this.push_list(this.recentlyAdded_Tags,[id,(await TAGS(id)).name]);
+    }
+}
+RegClass(SearchStatistics);//let $CL = typeof($IS_CLIENT$)!==undefined; // true for client, false on server
 /*
-new Promise((resolve, reject) => {
-    WebSock.onopen(()=>resolve());
-});*/
-    MsgType:{
-        saveAll:"save_all", //data:null
-        loadAll:"load_all", //data:null
-        load:"load", //data: attrSelector[]
-        eval:"eval", //code as string
+let $$$CL_ret ->  call fn and return its return (do nothing)
+let $$$CL_clone -> call fn, copy function body (rename BLOCK to _BLOCK etc.)
+let $$$CL_diff -> call fn, apply returned diff
+let $$$CL_local -> copy the function body, insert rpc call into $CL_rpc if exists.
+$$$CL_rpc -> insert the "awake rpc(..)" call here
+
+## why like this? 
+Well i dont want the server to return a Diff for everything ($CL_diff)
+- if i hold only 1 block why should i care about 99 other blocks in diff, and i dont want the server to have to hold "which blocks does each client hold"
+I can also run the code locally too ($CL_clone)
+- but thats error prone if i change code on server but forget on client
+
+So if i have this build-time way of saying "clone this fn, diff this fn" then i get all benefits.
+*/
+
+const BlkFn = {
+    // DeleteBlocks_unsafe(ids:Id[]):boolean{
+    //     /*
+    //     delete blocks without checking refCount (if referenced from other blocks)
+    //     */
+    //     for(let i=0,l=ids.length;i<l;i++){
+    //         if(PAGES[ids[i]]) delete PAGES[ids[i]];
+    //         delete BLOCKS[ids[i]];
+    //     }
+    //     return true;
+    // },
+    async RemoveTagFromBlock(blockId:Id,tagId:Id){ 
+        const t = await TAGS(tagId);
+        t.blocks.splice(t.blocks.indexOf(blockId),1); //remove block from tag
+        t.DIRTY();
+        const b = await BLOCKS(blockId);
+        b.tags.splice(b.tags.indexOf(tagId),1); //remove tag from block
+        b.DIRTY();
     },
-    __MsgQueue : [] as {n:string,d?:any,cb:Function}[], // 
-// let msgId = 0;
-// msg: {text:null,cb:null}         //
-// msg: {promise:true, text:null}   //promisify automatically
-    sendMsg(msg:ServerMsg){
-        // msgId++;
-        // msg.id = msgId;
+    async RemoveAllTagsFromBlock(blockId:Id){  ////let $$$CL_clone;
+        const b = await BLOCKS(blockId);          ////if($CL&&!b)return;
+        for(let i = 0; i<b.tags.length; i++){
+            const t = await TAGS(b.tags[i]);          ////if($CL&&!t)continue;
+            t.blocks.splice(t.blocks.indexOf(blockId),1); //remove block from tag
+            t.DIRTY();
+        }
+        b.tags = [];//    b.tags.splice(b.tags.indexOf(tagId),1); //remove tag from block
+        b.DIRTY();
+    },
+    async DeleteBlockOnce(id:Id){  ////let $$$CL_diff;
+        const b = await BLOCKS(id);
+        b.DIRTY();
+        if(--(b.refCount)>0) return;// false; //not getting fully deleted
+        //deleting block.
+        for(let i = 0; i<b.children.length;i++)
+            await this.DeleteBlockOnce(b.children[i]);
+        await this.RemoveAllTagsFromBlock(id);
+        if(PAGES[id]) delete PAGES[id];
+        DIRTY.mark("PAGES",id,undefined);
 
-        let promise:any = null;
-        if(msg.cb === undefined)
-            promise = new Promise((resolve,reject)=>{
-                msg.cb = resolve; 
-            });
-
-        this.__MsgQueue.push(msg as any);
+        // _BLOCKS[id].DIRTY_deleted();
+        delete _BLOCKS[id];
+        Block.DIRTY_deletedS(id);
+        TODO("Delete BLOCKS and PAGES on server");
+        return;// true; //got fully deleted
+    },
+    async DeleteBlockEverywhere(id:Id){  ////let $$$CL_diff;
+        const b = await BLOCKS(id);
+        b.refCount=0;
+        for(let i = 0; i<b.children.length;i++)
+            await this.DeleteBlockOnce(b.children[i]);
+        await this.RemoveAllTagsFromBlock(id);
+        if(PAGES[id]) delete PAGES[id];
+        DIRTY.mark("PAGES",id,undefined);
+        delete _BLOCKS[id];
+        Block.DIRTY_deletedS(id);
+        // Search all blocks and all tags. Remove self from children.
         
-        if(this.__SockOpen)
-            this.__WebSock.send(JSON_Serialize({n:msg.n,d:msg.d}));
-
-        if(promise!==null) return promise;
-    }
-};
-
-Server.__WebSock.onopen = (event) => {
-    Server.__SockOpen = true;
-    for(let i = 0; i < Server.__MsgQueue.length; i++) //send unsent ones
-        Server.__WebSock.send(JSON_Serialize({n:Server.__MsgQueue[i].n,d:Server.__MsgQueue[i].d}));
+        let allBlocks = Object.keys(_BLOCKS);
+        for(let i = 0; i<allBlocks.length;i++){
+            const b2 = await BLOCKS(allBlocks[i]);
+            b2.children = b2.children.filter((x:any)=>(x!=id));
+            b2.DIRTY();
+            WARN("We arent modifying array in-place (for performance), caller may hold old reference");
+            /*
+            let oc = b2.children;
+            let nc = oc.filter((x:any)=>(x!=id));
+            if(nc.length != oc.length){
+                oc.splice(0,oc.length,...nc);    // in-place set new array values
+            }*/
+        }
         
+        let allTags = Object.keys(_TAGS);
+        for(let i = 0; i<allTags.length;i++){
+            const t2 = await TAGS(allTags[i]);
+            t2.blocks = t2.blocks.filter((x:any)=>(x!=id));
+            t2.DIRTY();
+            WARN("We arent modifying array in-place (for performance), caller may hold old reference");
+        }
+    },
+    async InsertBlockChild(parent:Id, child:Id, index:number )/*:Id[]*/{  ////let $$$CL_clone;
+        const p = await BLOCKS(parent);                 ////if($CL&&!p)return;
+        const l = p.children;
+        if(index >= l.length){
+            l.push(child);
+        }else{
+            l.splice(index,0,child);
+        }
+        p.DIRTY();
+        // return l;
+    },
+    async SearchPages(title:string,mode:'exact'|'startsWith'|'includes'='exact'):Promise<Id[]>{  ////let $$$CL_ret;
+        let pages = await Promise.all(Object.keys(PAGES).map(async k=>(await BLOCKS(k))));
+        if(mode=='exact'){
+            return pages.filter(p=>p.pageTitle == title).map(p=>p.id);
+        }else if(mode=='startsWith'){
+            return pages.filter(p=>p.pageTitle?.startsWith(title)).map(p=>p.id);
+        }else if(mode=='includes'){
+            return pages.filter(p=>p.pageTitle?.includes(title)).map(p=>p.id);
+        }
+        return [];
+    },
+    async SearchTags(title:string,mode:'exact'|'startsWith'|'includes'='exact'):Promise<Id[]>{  //let $$$CL_ret;
+        let pages = await Promise.all(Object.keys(_TAGS).map(async k => await TAGS(k)));//Object.values(TAGS);//.map(k=>BLOCKS[k]);
+        if(mode=='exact'){
+            return pages.filter(p=>p.name == title).map(p=>p.id);
+        }else if(mode=='startsWith'){
+            return pages.filter(p=>p.name?.startsWith(title)).map(p=>p.id);
+        }else if(mode=='includes'){
+            return pages.filter(p=>p.name?.includes(title)).map(p=>p.id);
+        }
+        return [];
+    },
+    async HasTagBlock(tagId:Id,blockId:Id/*,  $CL=false*/):Promise<boolean>{  //let $$$CL_local;
+        //if(!$CL) return TAGS[tagId].blocks.indexOf(blockId)!=-1;
+        //if($CL){
+            if(_TAGS[tagId]) return _TAGS[tagId].blocks.indexOf(blockId)!=-1;
+            if(_BLOCKS[blockId]) return _BLOCKS[blockId].tags.indexOf(tagId)!=-1;
+            return (await TAGS(tagId)).blocks.indexOf(blockId)!=-1;
+            //return $$$CL_rpc;
+        //}
+    },
+    async TagBlock(tagId:Id,blockId:Id)/*:boolean*/{  //let $$$CL_clone;
+        if(await this.HasTagBlock(tagId,blockId/*, $CL*/)) return;// false;
+        (await TAGS(tagId)).blocks.push(blockId);
+        _TAGS[tagId]!.DIRTY();
+        (await BLOCKS(blockId)).tags.push(tagId);
+        _BLOCKS[blockId]!.DIRTY();
+        // return true;
+    },
+    async RemoveTagBlock(tagId:Id,blockId:Id)/*:boolean*/{   //let $$$CL_clone;
+        if(await this.HasTagBlock(tagId,blockId/*, $CL*/) == false) return;// false;
+        (await TAGS(tagId)).blocks.splice(_TAGS[tagId]!.blocks.indexOf(blockId),1);
+        (await BLOCKS(blockId)).tags.splice(_BLOCKS[blockId]!.tags.indexOf(tagId),1);
+        _TAGS[tagId]!.DIRTY();
+        _BLOCKS[blockId]!.DIRTY();
+        // return true;
+    },
 
-    console.log("Open");
-    // WebSock.send("Here's some text that the server is urgently awaiting!");
-};
+}
+var PROJECT = new ProjectClass();
+var SEARCH_STATISTICS = new SearchStatistics();
 
-Server.__WebSock.onmessage = (event) => {
-    let m = Server.__MsgQueue.shift()!;
-    let dataTxt = event.data as string;
-    console.log("websock recv:",dataTxt);
-    let data;
-    if(dataTxt.startsWith("error")){
-        data = new Error(JSON_Deserialize(dataTxt.substring("error".length)));
-    }else{
-        data = JSON_Deserialize(dataTxt);
-    }
-    m.cb(data);
-    // console.log(event.data);
-};
-
-// WebSock.send("Here's some text that the server is urgently awaiting!");
-
-// type TBLOCKS = {[index:Id]:Block};
-// type TBLOCKSn = {[index:Id]:Block|null};
-// var _BLOCKS : TBLOCKSn = {}; //all blocks
-// var BLOCKS = new Proxy({},{
-//     async get(target,key:string,receiver){
-//         if(_BLOCKS[key] === null)
-//             _BLOCKS[key] = await load(["BLOCKS",key]) as Block;
-//         return _BLOCKS[key] as Block;
-//     },
-//     set(target,key,newValue,receiver){
-//         throw new Error("Cannot set whole object value.");
-//         return true;
-//     }
-// }) as {[index:Id]:Promise<Block>};
 type TBLOCKSn = {[index:Id]:Block|null};
-var _BLOCKS : TBLOCKSn = {};
-const BLOCKS = ServerProxyObject.new<Id,Block>("BLOCKS");
+var _BLOCKS : TBLOCKSn = {};  // all blocks
+async function BLOCKS( idx :Id , depth :number = 1 ):Promise<Block>{
+    if(_BLOCKS[idx]===null)
+        await loadBlock(idx,depth);
+    return _BLOCKS[idx]!;
+}
 
 type TPAGES = {[index:Id]:true};
 var PAGES : TPAGES = {}; //all pages
 
-// type TTAGS = {[index:Id]:Tag};
-// type TTAGSn = {[index:Id]:Tag|null};
-// var _TAGS : TTAGSn = {}; //all blocks
-// var TAGS = new Proxy({},{
-//     async get(target,key:string,receiver){
-//         if(_TAGS[key] === null)
-//             _TAGS[key] = await load(["TAGS",key]) as Tag;
-//         return _TAGS[key] as Tag;
-//     },
-//     set(target,key,newValue,receiver){
-//         throw new Error("Cannot set whole object value.");
-//         return true;
-//     }
-// }) as {[index:Id]:Promise<Tag>};
 type TTAGSn = {[index:Id]:Tag|null};
-var _TAGS : TTAGSn = {};
-const TAGS = ServerProxyObject.new<Id,Tag>("TAGS");
-
-async function SaveAll(){
-    TODO();
-    Server.sendMsg({n:Server.MsgType.saveAll,d:{TAGS:_TAGS,BLOCKS:_BLOCKS}});
+var _TAGS : TTAGSn = {};  // all tags
+async function TAGS( idx :Id , depth :number = 1 ):Promise<Tag>{
+    if(_TAGS[idx]===null)
+        await loadTag(idx,depth);
+    return _TAGS[idx]!;
 }
 
+/*
 async function LoadAll(){
     TODO();
     Server.sendMsg({n:Server.MsgType.loadAll,cb:((resp:any)=>{
         throwIf(resp);
-        //let {_TAGS,_BLOCKS} = resp;
 
         _TAGS = __Deserialize(resp._TAGS ?? {});
         _BLOCKS = __Deserialize(resp._BLOCKS ?? {});
     })});
 
-}
+}*/
 async function ReLoadAllData(){
     let newData = await rpc(`client_ReLoadAllData`,{
         BLOCKS:_BLOCKS,
@@ -463,12 +803,8 @@ async function rpc(code:string|Function, ...fnArgs:any):Promise<any>{
         code = `(${code}).apply(null,__Deserialize(${JSON_Serialize(fnArgs)}));`;
     }
     console.log("rpc after:",code);
-    // else{
 
-    //     // code = `(()=>{let f =()=>${code};return f();})();`;
-    //     //done like so to ensure it works even if code has ; or not,
-    // }
-    let resp = await Server.sendMsg({n:Server.MsgType.eval,d:code});
+    const resp = await CMsg_eval({code});
     console.log("rpc resp:",resp);
     throwIf(resp);
     return resp;
@@ -478,35 +814,97 @@ function throwIf(obj:any){
         throw obj;
     }
 }
-// function newBlock(text){
-//     return rpc(t=>(new Block(t)),text);
-//     //return Server.sendMsg({n:Server.MsgType.eval,d:`return (new Block(${JSON.stringify(text)}))`});
-// }
 
 async function LoadInitial(){
-    let initial = await rpc(`client_LoadInitial`) as any;
-    PAGES =  __Deserialize(initial.PAGES);
+
+    /*
+    Load:  PROJECT , SEARCH_STATISTICS , PAGES
+    all ids for:  _BLOCKS, _TAGS
+    on demand objects for: _BLOCKS, _TAGS.
+    */
+    const resp = await CMsg_loadInitial(null);
+    if(resp instanceof Error)
+        throw resp;
+    else if(resp === false){ // server has no saved state (fresh install) 
+
+    }else{
+        //let json = resp;//__Deserialize(resp);
+        PAGES =  JSON_Deserialize(resp.PAGES as any);
+        SEARCH_STATISTICS =  JSON_Deserialize(resp.SEARCH_STATISTICS as any);
+        PROJECT =  JSON_Deserialize(resp.PROJECT as any);   
+    
+        _BLOCKS = {};
+        for(let k in resp.ids_BLOCKS)
+            _BLOCKS[k] = null;
+        _TAGS = {};
+        for(let k in resp.ids_TAGS)
+            _TAGS[k] = null;
+    
+    }
 }
+async function SaveAll(){
+    //    Server.sendMsg({n:Server.MsgType.saveAll,d:{TAGS:_TAGS,BLOCKS:_BLOCKS}});
+    if(DIRTY._.length==0 || DIRTY.error!==null) return;
+        
+    // send to server all dirty objects.
+    // most importantly also send the ""
+    let oldChangeHash = PROJECT.running_change_hash;
+    PROJECT.genChangeHash();
+    //let packet : TMsg_saveAll_C2S["d"] = {hash:oldChangeHash,data:[]};
+    let packet : TCMsg_saveAll__DataOrDeleted[] = [];
+    DIRTY._.forEach(p=>{
+        if(p[2]===undefined){ // thing was deleted.
+            packet.push({path:[p[0],p[1]],deleted:true});
+        }else{
+            let evalStr = DIRTY.evalStringResolve(p[0],p[1]);
+            try{
+                packet.push({path:[p[0],p[1]],data:JSON_Serialize(eval(evalStr))!});
+            }catch(e){
+                DIRTY.error = e as Error;
+                throw e;
+            }
+        }
+    });
+    const resp = await CMsg_saveAll({hash:oldChangeHash,data:packet});
+    if(resp instanceof Error){
+        DIRTY.error = resp;
+        throw resp; // !!!!!!!!!!!!!!
+    }
+}
+
 async function loadBlock(blockId:Id,depth:number) {
     // path = AttrPath.parse(path);
     console.log("Loading block:",blockId);
-    let newBLOCKS_partial = await rpc(`client_loadBlock`,blockId,depth);
+    let newBLOCKS_partial = await CMsg_loadBlock({id:blockId,depth});//rpc(`client_loadBlock`,blockId,depth);
+    //throwIf(newBLOCKS_partial);
+    if(newBLOCKS_partial instanceof Error){throw newBLOCKS_partial}else
     for(let key in newBLOCKS_partial){
         console.log("Loading block id:",key);
-        _BLOCKS[key] = newBLOCKS_partial[key];
-    }
-   
+        _BLOCKS[key] = JSON_Deserialize( newBLOCKS_partial[key] );
+    }  
+}
+async function loadTag(blockId:Id,depth:number) {
+    TODO("LoadTag");
+    // path = AttrPath.parse(path);
+    console.log("Loading tag:",blockId);
+    let newBLOCKS_partial = await CMsg_loadTag({id:blockId,depth});//await rpc(`client_loadBlock`,blockId,depth);
+    //throwIf(newBLOCKS_partial);
+    if(newBLOCKS_partial instanceof Error){throw newBLOCKS_partial}else
+    for(let key in newBLOCKS_partial){
+        console.log("Loading tag id:",key);
+        _TAGS[key] = JSON_Deserialize( newBLOCKS_partial[key] );
+    }  
 }
 
 class Block{
     static _serializable_default = {children:[],tags:[],attribs:{},refCount:1};
 
-    /*
-    pageTitle?:string;  //if has title then its a page!
-
     id:Id;
     refCount:number;
+    
+    pageTitle?:string;  //if has title then its a page!
     text:string;
+
     //usually-empty
     children:Id[];
     tags:Id[];
@@ -519,179 +917,71 @@ class Block{
         this.children = [];
         this.tags = [];
         this.attribs = {};
-    }*/
-    
-    id:Id;
-    
-    _pageTitle?:string;  //if has title then its a page!
-
-    _refCount:number;
-    _text:string;
-    //usually-empty
-    _children:TProxyArraySetter<Id>;
-    _tags:TProxyArraySetter<Id> ;
-    _attribs:objectA;
-
-    get pageTitle(){return this._pageTitle;}
-    set pageTitle(v){this.set('_pageTitle',v);}
-    //pageTitle_set(v:string){ this.set('_pageTitle',v); return v;}
-    get refCount(){return this._refCount;}
-    get text(){return this._text;}
-    set text(v){this.set('_text',v);}
-    //text_set(v:string){ this.set('_text',v); return v;}
-    get children(){return this._children;}
-    // set children(v:any[]){this._children.splice(0,this._children.length,...v);}
-    get tags(){return this._tags;}
-    // set tags(v:any[]){this._tags.splice(0,this._tags.length,...v);}
-    get attribs(){return this._attribs;}
-
-    constructor(){
-        this.id = "";
-        this._text = "";
-        this._refCount = 1;
-        this._children = ProxyArraySetter.__new(this,"_children");
-        this._tags = ProxyArraySetter.__new(this,"_tags");
-        this._attribs = {};
     }
-    __serialize__(){ //called by serializer.
-        return Object.setPrototypeOf({
-            id:this.id,
-            pageTitle:this._pageTitle,
-            refCount:this._refCount,
-            text:this._text,
-            children:this._children, /*serializer handles as normal array*/
-            tags:this._tags, /*serializer handles as normal array*/
-            attribs:this._attribs
-        },Block.prototype);
-    }
-    static __deserialize__(o:any){
-        // for(let k in Block._serializable_default){
-        //     if(o[k]===undefined)
-        //         o[k] = Block._serializable_default[k];
-        // }
+    DIRTY(){DIRTY.mark("_BLOCKS",this.id);}
+    DIRTY_deleted(){DIRTY.mark("_BLOCKS",this.id,undefined);}
+    static DIRTY_deletedS(id:Id){DIRTY.mark("_BLOCKS",id,undefined);}
+    static new(text=""):Block{
         let b = new Block();
-        b.id = o.id;
-        b._pageTitle = o.pageTitle;
-        b._refCount = o.refCount;
-        b._text = o.text;
-        b._children = ProxyArraySetter.__new(b,"_children",o.children);
-        b._tags = ProxyArraySetter.__new(b,"_tags",o.tags);
-        b._attribs = o.attribs;
+        _BLOCKS[b.id = PROJECT.genId()] = b;
+        b.text = text;
+        b.DIRTY();
         return b;
     }
-    async set(path:_AttrPath,value:any,doAssign=true){
-        path = AttrPath.parse(path);
-        console.log("SETTING ",path);
-        let field = path[0];
-        if(field.startsWith("_")){
-            if(doAssign)
-                (this as any)[field] = value;
-            field = field.substring(1);
-            path[0] = field;
-        }else{
-            if(doAssign){
-                if((this as any)['_'+field] !== undefined)
-                    (this as any)['_'+field] = value;
-            }
-        }
-        return await rpc(`server_set`,["BLOCKS",this.id,...path],value);
-    }
-    static async new(text=""):Promise<Block>{
-        let b = (await rpc(`Block.new`,text)) as Block;
-        _BLOCKS[b.id] = b;
-        return b;
-    }
-    static async newPage(title=""):Promise<Block>{
-        let b = await rpc(`Block.newPage`,title) as Block;
-        _BLOCKS[b.id] = b;
+    static newPage(title=""):Block{
+        let b = new Block();
+        _BLOCKS[b.id = PROJECT.genId()] = b;
         PAGES[b.id] = true;
+        b.pageTitle = title;
+        b.DIRTY();
         return b;
     }
+
     makeVisual(parentElement?:HTMLElement){
         return (new Block_Visual(this,parentElement));
     }
-    // deserialize_fn(){
-    //     if(this.children===undefined) this.children = [];
-    //     if(this.attribs===undefined) this.attribs = {};
-    // }
-    // serialize_fn(){
-    //     let s = `{${SerializeClass(this)
-    //     },id:${this.id},text:"${EscapeStr(this.text)}"`;
-    //     if(this.children.length>0) s+=`,children:${JSON_Serialize(this.children)}`;
-    //     if(this.attribs!=null /*empty object*/) s+=`,attribs:${JSON_Serialize(this.attribs)}`;
-    //     return s+"}";
-    // }
 
 };
 RegClass(Block);
 
-class Tag{
+class Tag{ 
     static _serializable_default = {attribs:{},parentTagId:"",childrenTags:{}};
+    name : string;
     id:Id;
-    _name : string;
-    _parentTagId:Id;
-    _childrenTags:TProxyArraySetter<Id>;
-    _blocks:TProxyArraySetter<Id>;
-    _attribs:objectA;
-
-    get name(){return this._name;}
-    // set name(v:string){this.set("_name",v);}
-    // async name_set(v:string){return await this.set("_name",v);}
-    get parentTagId(){return this._parentTagId;}
-    get childrenTags(){return this._childrenTags;}
-    get blocks(){return this._blocks;}
-    get attribs(){return this._attribs;}
+    parentTagId:Id;
+    childrenTags:Id[];
+    blocks:Id[];
+    attribs:objectA;
 
     constructor(){
         this.id = "";
-        this._name = "";
-        this._parentTagId = "";
-        this._childrenTags = ProxyArraySetter.__new(this,"_childrenTags");
-        this._blocks = ProxyArraySetter.__new(this,"_blocks");
-        this._attribs = {};
+        this.name = "";
+        this.parentTagId = "";
+        this.childrenTags = [];
+        this.blocks = [];
+        this.attribs = {};
     }
-    __serialize__(){
-        return Object.setPrototypeOf({
-            id:this.id,
-            name:this._name,
-            parentTagId:this._parentTagId,
-            childrenTags:this._childrenTags,
-            blocks:this._blocks,
-            attribs:this._attribs
-        },Tag.prototype);
-    }
-    static __deserialize__(o:any){
+    DIRTY(){DIRTY.mark("_TAGS",this.id);}
+    DIRTY_deleted(){DIRTY.mark("_TAGS",this.id,undefined);}
+    static DIRTY_deletedS(id:Id){DIRTY.mark("_TAGS",id,undefined);}
+    static async new(name:string,parentTag:Id=""){
         let t = new Tag();
-        t.id = o.id;
-        t._name = o.name;
-        t._parentTagId = o.parentTagId;
-        t._childrenTags = ProxyArraySetter.__new(this,"_childrenTags",o.childrenTags);
-        t._blocks = ProxyArraySetter.__new(this,"_blocks",o.blocks);
-        t._attribs = o.attribs;
-        return t;
-    }
-    async set(path:_AttrPath,value:any,doAssign=true){
-        path = AttrPath.parse(path);
-        console.log("SETTING ",path);
-        let field = path[0];
-        if(field.startsWith("_")){
-            if(doAssign)
-                (this as any)[field] = value;
-            field = field.substring(1);
-            path[0] = field;
-        }else{
-            if(doAssign){
-                if((this as any)['_'+field] !== undefined)
-                    (this as any)['_'+field] = value;
-            }
+        let parent :Tag|null = null;
+        
+        if(parentTag!=""){
+            parent = await TAGS(parentTag);
+            if(!parent) throw new Error(`Invalid parent: #${parentTag} not found`);
         }
-        return await rpc(`server_set`,["TAGS",this.id,...path],value);
-    }
-    static async new(name:string){
-        let t =  await rpc(`Tag.new`,name) as Tag;
-        _TAGS[t.id] = t;
-        if(t._parentTagId)
-            (await TAGS[t._parentTagId])._blocks.push(t.id);
+        
+        _TAGS[t.id = PROJECT.genId()] = t;
+        t.name = name;
+
+        if(parentTag!=""){ 
+            t.parentTagId = parentTag;
+            parent!.childrenTags.push(t.id);    
+        }
+
+        t.DIRTY();
         return t;
     }
 }
@@ -725,7 +1015,7 @@ class Page_Visual{
     render(){
         const p = this.page();
         this.children = [];
-        document.title = p.pageTitle;
+        document.title = p.pageTitle ?? "";
         this.childrenHolderEl.innerHTML = ""; // clear
         function makeBlockAndChildrenIfExist(bv:Block_Visual){
             //bv already exists and is created. Now we need to create visuals for its children (and theirs).
@@ -839,7 +1129,7 @@ function selectBlock(b:Block_Visual,editText:boolean|null=null){
  */
 async function CheckAndHandle_PageNoBlocks(){
     if(view.pageId == "") return;
-    let p = (await BLOCKS[view.pageId]);
+    let p = (await BLOCKS(view.pageId));
     if(p.children.length>0)return;
     NewBlockInsidePage();
 }
@@ -986,7 +1276,7 @@ async function NewBlockInside(thisBlock:Block_Visual){
 async function NewBlockInsidePage(){
     // let h = view.el!;//.parentElement!; //parent node
     let blockVis = (await Block.new("")).makeVisual();
-    await BlkFn.InsertBlockChild(view.pageId,blockVis.block.id, (await BLOCKS[view.pageId]).children.length); //as last
+    await BlkFn.InsertBlockChild(view.pageId,blockVis.block.id, (await BLOCKS(view.pageId)).children.length); //as last
     
     // thisBlock.block.children.push(blockVis.block.id);
 
@@ -1162,36 +1452,6 @@ class Block_Visual{
                     e.preventDefault();
                     e.stopPropagation();
                     
-                    // var keyboardEvent = new KeyboardEvent('keydown',{
-                    //     key:"Enter",
-
-                    //     // 'keydown', // event type: keydown, keyup, keypress
-                    //     // true, // bubbles
-                    //     // true, // cancelable
-                    //     // window, // view: should be window
-                    //     // false, // ctrlKey
-                    //     // false, // altKey
-                    //     // false, // shiftKey
-                    //     // false, // metaKey
-                    //     // 13, // keyCode: unsigned long - the virtual key code, else 0
-                    //     // 0,
-                    // });
-
-                    // var initMethod = typeof keyboardEvent.initKeyboardEvent !== 'undefined' ? 'initKeyboardEvent' : 'initKeyEvent';
-                    // keyboardEvent[initMethod](
-                    // 'keydown', // event type: keydown, keyup, keypress
-                    // true, // bubbles
-                    // true, // cancelable
-                    // window, // view: should be window
-                    // false, // ctrlKey
-                    // false, // altKey
-                    // false, // shiftKey
-                    // false, // metaKey
-                    // 13, // keyCode: unsigned long - the virtual key code, else 0
-                    // 0, // charCode: unsigned long - the Unicode character associated with the depressed key, else 0
-                    // );
-                    
-                    //e.target.dispatchEvent(keyboardEvent);
                 }else{
                     cancelEvent = false;
                 }
@@ -1247,162 +1507,3 @@ setTimeout(
     }
 }),
 1);
-declare var LEEJS : any;
-
-const SearcherMode = {
-    __at0_pages:1, // [0]1 = pages
-    __at0_tags:2,  // [0]2 = tags
-    __at1_find:0,  // [1]0 = find
-    __at1_add:1,   // [1]1 = add
-    pages_find : [1,0],
-    tags_find : [2,0],
-    tags_add : [2,1]
-}
-class Searcher {
-    visible:boolean;
-    input:HTMLInputElement;
-    finder:HTMLElement;
-    direct:HTMLElement;recent:HTMLElement;
-
-    directs:string[];
-    recents:string[];
-    mode:  null|any;
-
-    constructor(){
-        this.visible = true;
-        this.directs = [];
-        this.recents = [];
-        this.mode = null;
-        ///   MakeVisible {
-        let L = LEEJS;
-        // let inp,direct,recent;
-        // div($I`window`,[
-          this.finder = L.div(L.$I`finder`,[
-            this.input = L.input(L.$I`finderSearch`,{type:"text"})(),
-            L.div(L.$I`finderSuggestions`,{
-                $bind:this, $click:this.__ItemClick
-            },[
-                this.direct = L.div(L.$I`direct`,[
-                    L.div("Item"),L.div("Item"),L.div("Item"),
-                ])(),
-                this.recent = L.div(L.$I`recent`,[
-                    L.div("Item"),L.div("Item"),
-                ])(),
-            ])
-          ]).a('#finderRoot');
-        // ]);
-        ///   MakeVisible }
-
-        this.toggleVisible(false);
-    }
-    toggleVisible(setValue?:boolean){
-        if(setValue!==undefined)
-            this.visible = setValue;
-        else this.visible = !this.visible;
-        
-        this.finder.style.display = this.visible?'block':'none';
-    }
-    async Search(){
-        let last = this.input.value.trim();
-        if(last.indexOf(',')!=-1)
-            last = last.split(',').at(-1)!.trim();
-        if(this.mode[0]==SearcherMode.__at0_pages){
-            this.directs = await BlkFn.SearchPages(last,'includes');
-        }else if(this.mode[0]==SearcherMode.__at0_tags){
-            this.directs = await BlkFn.SearchTags(last,'includes');
-        }
-        // this.directs = TAGS.filter(t=>t.name.includes(this.input.value));
-    }
-    async Submit(){
-        let items = this.input.value.trim().split(',').map(v=>v.trim());
-        if(this.mode[0]==SearcherMode.__at0_pages){
-        
-        }else if(this.mode[0]==SearcherMode.__at0_tags){
-        
-        }
-    }
-    AddRecent(){
-
-    }
-    ItemSelected(){
-
-    }
-    __ItemClick(event:MouseEvent){
-        let item:HTMLElement = event.target as HTMLElement;
-        if(item == this.recent || item == this.direct) return;
-        
-    }
-}
-let SEARCHER = (new Searcher());
-let $CL=true;
-const BlkFn = {
-async RemoveTagFromBlock (blockId, tagId) {
-    (await rpc(`BlkFn.RemoveTagFromBlock`,blockId,tagId));  
-    const t = _TAGS[tagId];
-    if ($CL && !t) return;
-    t._blocks.splice(t._blocks.indexOf(blockId), 1); //remove block from tag
-    const b = _BLOCKS[blockId];
-    if ($CL && !b) return;
-    b._tags.splice(b._tags.indexOf(tagId), 1); //remove tag from block
-  },
-async RemoveAllTagsFromBlock (blockId) {
-    (await rpc(`BlkFn.RemoveAllTagsFromBlock`,blockId));  
-    const b = _BLOCKS[blockId];
-    if ($CL && !b) return;
-    for(let i = 0; i < b._tags.length; i++){
-      const t = _TAGS[b._tags[i]];
-      if ($CL && !t) continue;
-      t._blocks.splice(t._blocks.indexOf(blockId), 1); //remove block from tag
-    }
-    b._tags = []; //    b._tags.splice(b._tags.indexOf(tagId),1); //remove tag from block
-  },
-async DeleteBlockOnce (id){
-	(await rpc(`BlkFn.DeleteBlockOnce`,id));
-	await ReLoadAllData();
-},
-async DeleteBlockEverywhere (id){
-	(await rpc(`BlkFn.DeleteBlockEverywhere`,id));
-	await ReLoadAllData();
-},
-async InsertBlockChild (parent, child, index) /*:Id[]*/ {
-    (await rpc(`BlkFn.InsertBlockChild`,parent,child,index));  
-    const p = _BLOCKS[parent];
-    if ($CL && !p) return;
-    const l = p._children;
-    if (index >= l.length) {
-      l.push(child);
-    } else {
-      l.splice(index, 0, child);
-    }
-  // return l;
-  },
-async SearchPages (title, mode = 'exact'){
-	return (await rpc(`BlkFn.SearchPages`,title,mode));
-},
-async SearchTags (title, mode = 'exact'){
-	return (await rpc(`BlkFn.SearchTags`,title,mode));
-},
-async HasTagBlock (tagId, blockId, $CL = false) {
-      
-    if (!$CL) return _TAGS[tagId]._blocks.indexOf(blockId) != -1;
-    if ($CL) {
-      if (_TAGS[tagId]) return _TAGS[tagId]._blocks.indexOf(blockId) != -1;
-      if (_BLOCKS[blockId]) return _BLOCKS[blockId]._tags.indexOf(tagId) != -1;
-      return (await rpc(`BlkFn.HasTagBlock`,tagId,blockId,$CL));
-    }
-  },
-async TagBlock (tagId, blockId) /*:boolean*/ {
-    (await rpc(`BlkFn.TagBlock`,tagId,blockId));  
-    if (await this.HasTagBlock(tagId, blockId, $CL)) return; // false;
-    _TAGS[tagId]._blocks.push(blockId);
-    _BLOCKS[blockId]._tags.push(tagId);
-  // return true;
-  },
-async RemoveTagBlock (tagId, blockId) /*:boolean*/ {
-    (await rpc(`BlkFn.RemoveTagBlock`,tagId,blockId));  
-    if (await this.HasTagBlock(tagId, blockId, $CL) == false) return; // false;
-    _TAGS[tagId]._blocks.splice(_TAGS[tagId]._blocks.indexOf(blockId), 1);
-    _BLOCKS[blockId]._tags.splice(_BLOCKS[blockId]._tags.indexOf(tagId), 1);
-  // return true;
-  },
-};

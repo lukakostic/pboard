@@ -1,1 +1,0 @@
-let $IS_CLIENT$ = true; // some functions check this if shared code on S and C

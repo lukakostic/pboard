@@ -85,4 +85,45 @@ class Searcher {
         
     }
 }
-let SEARCHER = (new Searcher());
+var SEARCHER = (new Searcher());
+
+class SearchStatistics{
+
+    maxRecents : 20;
+    recentlySearched_Pages: [Id,string][];
+    recentlySearched_Tags: [Id,string][];
+    recentlyVisited_Pages: [Id,string][];
+    recentlyAdded_Tags: [Id,string][];
+
+    constructor(){
+        this.maxRecents = 20; 
+        this.recentlySearched_Pages = [];
+        this.recentlySearched_Tags = [];
+        this.recentlyVisited_Pages = [];
+        this.recentlyAdded_Tags = [];
+    }
+
+    DIRTY(){DIRTY.mark("SEARCH_STATISTICS");}
+        
+
+    
+    push_list(list:[Id,string][],id_name:[Id,string]){
+        list.splice(0,0,id_name); // add as first
+        if(list.length>this.maxRecents) // limit max length
+            list.splice(this.maxRecents,list.length-this.maxRecents);
+        this.DIRTY();
+    }
+    async recentlySearched_Pages_push(id:Id){
+        this.push_list(this.recentlySearched_Pages,[id,(await BLOCKS(id)).pageTitle!]);
+    }
+    async recentlySearched_Tags_push(id:Id){
+        this.push_list(this.recentlySearched_Tags,[id,(await TAGS(id)).name]);
+    }
+    async recentlyVisited_Pages_push(id:Id){
+        this.push_list(this.recentlyVisited_Pages,[id,(await BLOCKS(id)).pageTitle!]);
+    }
+    async recentlyAdded_Tags_push(id:Id){
+        this.push_list(this.recentlyAdded_Tags,[id,(await TAGS(id)).name]);
+    }
+}
+RegClass(SearchStatistics);

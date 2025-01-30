@@ -17,6 +17,27 @@ function castIsnt(obj, ...isnt) {
     for(let i = 0, il = isnt.length; i < il; i++)if (obj === isnt[i]) throw new Error("Cast failed.");
     return obj;
 }
+/** num to base 92 string (35[#]-126[~] ascii) */ function numToShortStr(n) {
+    let s = "";
+    if (n < 0) {
+        s = "-";
+        n = -n;
+    }
+    while(true){
+        s += String.fromCharCode(n % 92 + 35);
+        if (n < 92) break;
+        n /= 92;
+    }
+    return s;
+}
+function filterNullMap(mapObj) {
+    const m = {};
+    for(let k in mapObj){
+        const v = mapObj[k];
+        if (v !== null) m[k] = mapObj[k];
+    }
+    return m;
+}
 // let __SerializableClasses = [Block];
 // let __classToId = new WeakMap<any,string>();
 let __IdToClass = {};
@@ -33,6 +54,8 @@ let __IdToClass = {};
     // __classToId.set(_class,id);  //register class name with class
     __IdToClass[id] = _class; //register class name to class object
     return id;
+}
+class Unknown_SerializeClass {
 }
 function SerializeClass(originalObj, _class) {
     let cls = _class ?? Object.getPrototypeOf(originalObj).constructor;
@@ -109,7 +132,7 @@ function JSON_Serialize(obj) {
     }
     return JSON.stringify(obj);
 }
-function __Deserialize(o) {
+function __Deserialize(o, allowUnknownClasses = false) {
     console.log("deserializing:", o);
     if (o === null) return null;
     if (Array.isArray(o)) return o.map((e)=>__Deserialize(e));
@@ -122,9 +145,12 @@ function __Deserialize(o) {
     let _class = null;
     let defaults = {};
     if (classId !== undefined) {
-        delete o.$$C;
         _class = __IdToClass[classId];
-        if (_class == null) throw new Error("Class not recognised:", classId);
+        delete o.$$C;
+        if (_class == null) {
+            if (allowUnknownClasses) _class = Unknown_SerializeClass.prototype;
+            else throw new Error("Class not recognised:", classId);
+        }
         Object.setPrototypeOf(o, _class); //applies in-place to object
         defaults = _class._serializable_default ?? {};
     }
@@ -152,332 +178,56 @@ function __Deserialize(o) {
     // if(o.deserialize_fn) o.deserialize_fn();
     return o;
 }
-function JSON_Deserialize(str) {
+function JSON_Deserialize(str, allowUnknownClasses = false) {
     console.log(str);
-    return __Deserialize(JSON.parse(str));
+    return __Deserialize(JSON.parse(str), allowUnknownClasses);
 }
-class AttrPath {
-    // path: string[];
-    static parse(inp) {
-        if (typeof inp == 'string') return inp.split('.');
-        else if (Array.isArray(inp)) return inp;
-        else throw new Error("Cant parse path, not string or array");
-    /*
-        else if(Array.isArray((inp as any).path)){
-            return Object.setPrototypeOf(inp,AttrPath);
-        }
-        // if(typeof(inp) == 'string' || ){
-        return new AttrPath(inp);
-        // }else return inp;
-        */ }
-}
-// RegClass(AttrPath);
-/*
-What are common diff situations?
-1. new (nested) key (and value)
-2. (nested) key removed
-3. promena vrednosti ((nested) key)
+/*******************
+ LIMITATIONS TO SERIALIZATION
 
-ako se menja higher level key, brise se lower level key
-*/ class Diff {
-    path;
-    value;
-    constructor(p, v){
-        this.path = AttrPath.parse(p);
-        this.value = v;
-    }
-}
-RegClass(Diff);
-class DiffList {
-    list;
-    constructor(){
-        this.list = [];
-    }
-    push(d) {
-        for(let i = 0; i < this.list.length; i++){
-            this.list[i].path;
-        }
-        this.list.push(d);
-    }
-}
-RegClass(DiffList);
-var $IS_CLIENT$ = undefined;
-let recentlySearched_Pages = [];
-let recentlySearched_Tags = [];
-let recentlyVisited_Pages = [];
-let recentlyAdded_Tags = [];
-let maxRecents = 20;
-function push_list(list, id) {
-    list.splice(0, 0, id);
-    if (list.length > maxRecents) list.splice(maxRecents, list.length - maxRecents);
-}
-function recentlySearched_Pages_push(id) {
-    push_list(recentlySearched_Pages, id);
-}
-function recentlySearched_Tags_push(id) {
-    push_list(recentlySearched_Tags, id);
-}
-function recentlyVisited_Pages_push(id) {
-    push_list(recentlyVisited_Pages, id);
-}
-function recentlyAdded_Tags_push(id) {
-    push_list(recentlyAdded_Tags, id);
-}
-function recentlySearched_Pages_getNames() {
-    return recentlySearched_Pages.map((id)=>[
-            id,
-            BLOCKS[id].pageTitle
-        ]);
-}
-function recentlySearched_Tags_getNames() {
-    return recentlySearched_Tags.map((id)=>[
-            id,
-            TAGS[id].name
-        ]);
-}
-function recentlyVisited_Pages_getNames() {
-    return recentlyVisited_Pages.map((id)=>[
-            id,
-            BLOCKS[id].pageTitle
-        ]);
-}
-function recentlyAdded_Tags_getNames() {
-    return recentlyAdded_Tags.map((id)=>[
-            id,
-            TAGS[id].name
-        ]);
-}
-let $CL = typeof $IS_CLIENT$ !== undefined; // true for client, false on server
-/*
-let $$$CL_ret ->  call fn and return its return (do nothing)
-let $$$CL_clone -> call fn, copy function body (rename BLOCK to _BLOCK etc.)
-let $$$CL_diff -> call fn, apply returned diff
-let $$$CL_local -> copy the function body, insert rpc call into $CL_rpc if exists.
-$$$CL_rpc -> insert the "awake rpc(..)" call here
-
-## why like this? 
-Well i dont want the server to return a Diff for everything ($CL_diff)
-- if i hold only 1 block why should i care about 99 other blocks in diff, and i dont want the server to have to hold "which blocks does each client hold"
-I can also run the code locally too ($CL_clone)
-- but thats error prone if i change code on server but forget on client
-
-So if i have this build-time way of saying "clone this fn, diff this fn" then i get all benefits.
-*/ const BlkFn = {
-    // DeleteBlocks_unsafe(ids:Id[]):boolean{
-    //     /*
-    //     delete blocks without checking refCount (if referenced from other blocks)
-    //     */
-    //     for(let i=0,l=ids.length;i<l;i++){
-    //         if(PAGES[ids[i]]) delete PAGES[ids[i]];
-    //         delete BLOCKS[ids[i]];
-    //     }
-    //     return true;
-    // },
-    async RemoveTagFromBlock (blockId, tagId) {
-        let $$$CL_clone;
-        const t = TAGS[tagId];
-        if ($CL && !t) return;
-        t.blocks.splice(t.blocks.indexOf(blockId), 1); //remove block from tag
-        const b = BLOCKS[blockId];
-        if ($CL && !b) return;
-        b.tags.splice(b.tags.indexOf(tagId), 1); //remove tag from block
-    },
-    async RemoveAllTagsFromBlock (blockId) {
-        let $$$CL_clone;
-        const b = BLOCKS[blockId];
-        if ($CL && !b) return;
-        for(let i = 0; i < b.tags.length; i++){
-            const t = TAGS[b.tags[i]];
-            if ($CL && !t) continue;
-            t.blocks.splice(t.blocks.indexOf(blockId), 1); //remove block from tag
-        }
-        b.tags = []; //    b.tags.splice(b.tags.indexOf(tagId),1); //remove tag from block
-    },
-    async DeleteBlockOnce (id) {
-        let $$$CL_diff;
-        const b = BLOCKS[id];
-        if (--b.refCount > 0) return; // false; //not getting fully deleted
-        //deleting block.
-        for(let i = 0; i < b.children.length; i++)await this.DeleteBlockOnce(b.children[i]);
-        await this.RemoveAllTagsFromBlock(id);
-        if (PAGES[id]) delete PAGES[id];
-        delete BLOCKS[id];
-        return; // true; //got fully deleted
-    },
-    async DeleteBlockEverywhere (id) {
-        let $$$CL_diff;
-        const b = BLOCKS[id];
-        b.refCount = 0;
-        for(let i = 0; i < b.children.length; i++)await this.DeleteBlockOnce(b.children[i]);
-        await this.RemoveAllTagsFromBlock(id);
-        if (PAGES[id]) delete PAGES[id];
-        delete BLOCKS[id];
-        // Search all blocks and all tags. Remove self from children.
-        let allBlocks = Object.keys(BLOCKS);
-        for(let i = 0; i < allBlocks.length; i++){
-            const b2 = BLOCKS[allBlocks[i]];
-            b2.children = b2.children.filter((x)=>x != id);
-            WARN("We arent modifying array in-place (for performance), caller may hold old reference");
-        /*
-            let oc = b2.children;
-            let nc = oc.filter((x:any)=>(x!=id));
-            if(nc.length != oc.length){
-                oc.splice(0,oc.length,...nc);    // in-place set new array values
-            }*/ }
-        let allTags = Object.keys(TAGS);
-        for(let i = 0; i < allTags.length; i++){
-            const t2 = TAGS[allTags[i]];
-            t2.blocks = t2.blocks.filter((x)=>x != id);
-            WARN("We arent modifying array in-place (for performance), caller may hold old reference");
-        }
-    },
-    async InsertBlockChild (parent, child, index) /*:Id[]*/ {
-        let $$$CL_clone;
-        const p = BLOCKS[parent];
-        if ($CL && !p) return;
-        const l = p.children;
-        if (index >= l.length) {
-            l.push(child);
-        } else {
-            l.splice(index, 0, child);
-        }
-    // return l;
-    },
-    async SearchPages (title, mode = 'exact') {
-        let $$$CL_ret;
-        let pages = Object.keys(PAGES).map((k)=>BLOCKS[k]);
-        if (mode == 'exact') {
-            return pages.filter((p)=>p.pageTitle == title).map((p)=>p.id);
-        } else if (mode == 'startsWith') {
-            return pages.filter((p)=>p.pageTitle?.startsWith(title)).map((p)=>p.id);
-        } else if (mode == 'includes') {
-            return pages.filter((p)=>p.pageTitle?.includes(title)).map((p)=>p.id);
-        }
-        return [];
-    },
-    async SearchTags (title, mode = 'exact') {
-        let $$$CL_ret;
-        let pages = Object.values(TAGS); //.map(k=>BLOCKS[k]);
-        if (mode == 'exact') {
-            return pages.filter((p)=>p.name == title).map((p)=>p.id);
-        } else if (mode == 'startsWith') {
-            return pages.filter((p)=>p.name?.startsWith(title)).map((p)=>p.id);
-        } else if (mode == 'includes') {
-            return pages.filter((p)=>p.name?.includes(title)).map((p)=>p.id);
-        }
-        return [];
-    },
-    async HasTagBlock (tagId, blockId, $CL1 = false) {
-        let $$$CL_local;
-        if (!$CL1) return TAGS[tagId].blocks.indexOf(blockId) != -1;
-        if ($CL1) {
-            if (TAGS[tagId]) return TAGS[tagId].blocks.indexOf(blockId) != -1;
-            if (BLOCKS[blockId]) return BLOCKS[blockId].tags.indexOf(tagId) != -1;
-            return $$$CL_rpc;
-        }
-    },
-    async TagBlock (tagId, blockId) /*:boolean*/ {
-        let $$$CL_clone;
-        if (await this.HasTagBlock(tagId, blockId, $CL)) return; // false;
-        TAGS[tagId].blocks.push(blockId);
-        BLOCKS[blockId].tags.push(tagId);
-    // return true;
-    },
-    async RemoveTagBlock (tagId, blockId) /*:boolean*/ {
-        let $$$CL_clone;
-        if (await this.HasTagBlock(tagId, blockId, $CL) == false) return; // false;
-        TAGS[tagId].blocks.splice(TAGS[tagId].blocks.indexOf(blockId), 1);
-        BLOCKS[blockId].tags.splice(BLOCKS[blockId].tags.indexOf(tagId), 1);
-    // return true;
-    }
-};
-class Block {
-    static _serializable_default = {
-        children: [],
-        tags: [],
-        attribs: {},
-        refCount: 1
-    };
-    id;
-    refCount;
-    pageTitle;
-    text;
-    //usually-empty
-    children;
-    tags;
-    attribs;
-    constructor(){
-        this.id = "";
-        this.text = "";
-        this.refCount = 1;
-        this.children = [];
-        this.tags = [];
-        this.attribs = {};
-    }
-    static new(text = "") {
-        let b = new Block();
-        BLOCKS[b.id = genId()] = b;
-        b.text = text;
-        return b;
-    }
-    static newPage(title = "") {
-        let b = new Block();
-        BLOCKS[b.id = genId()] = b;
-        PAGES[b.id] = true;
-        b.pageTitle = title;
-        return b;
-    }
-}
-RegClass(Block);
-class Tag {
-    static _serializable_default = {
-        attribs: {},
-        parentTagId: "",
-        childrenTags: {}
-    };
-    name;
-    id;
-    parentTagId;
-    childrenTags;
-    blocks;
-    attribs;
-    constructor(){
-        this.id = "";
-        this.name = "";
-        this.parentTagId = "";
-        this.childrenTags = [];
-        this.blocks = [];
-        this.attribs = {};
-    }
-    static new(name, parentTag = "") {
-        let t = new Tag();
-        let parent = null;
-        if (parentTag != "") {
-            parent = TAGS[parentTag];
-            if (!parent) throw new Error(`Invalid parent: #${parentTag} not found`);
-        }
-        TAGS[t.id = genId()] = t;
-        t.name = name;
-        if (parentTag != "") {
-            t.parentTagId = parentTag;
-            parent.childrenTags.push(t.id);
-        }
-        return t;
-    }
-}
-RegClass(Tag); // import { serve } from "https://deno.land/std@0.177.0/http/mod.ts";
+ NO CIRCULAR REFERENCES.
+ No arrays with special properties or classes.
+*********************/ /************* 
+Messages are mostly client -> server.
+Msg = code of message
+TCMsg = type of client request
+TSMsg = type of server response
+CMsg = send client -> server
+**************/ /** */ const _MakeMsg = (msg_code)=>async (d)=>await Server.sendMsg({
+            n: msg_code,
+            d
+        });
+const Msg_saveAll = 'saveAll';
+const CMsg_saveAll = _MakeMsg(Msg_saveAll);
+const Msg_eval = 'eval';
+const CMsg_eval = _MakeMsg(Msg_eval);
+const Msg_loadInitial = 'loadInitial';
+const CMsg_loadInitial = _MakeMsg(Msg_loadInitial);
+const Msg_loadBlock = 'loadBlock';
+const CMsg_loadBlock = _MakeMsg(Msg_loadBlock);
+const Msg_loadTag = 'loadTag';
+const CMsg_loadTag = _MakeMsg(Msg_loadTag);
+// import { serve } from "https://deno.land/std@0.177.0/http/mod.ts";
 // import { serveDirWithTs } from "https://deno.land/x/ts_serve@v1.4.6/mod.ts";
 import { serveDirWithTs } from "jsr:@ayame113/ts-serve";
 //https://github.com/ayame113/ts-serve
 import * as fs from "jsr:@std/fs";
-let __runningId = 0;
-// var ID : {[index:Id]:any} = {}; //all everything
-function genId() {
-    return (++__runningId).toString();
-}
-var BLOCKS = {}; //all blocks
-var PAGES = {}; //all pages
-var TAGS = {}; //all tags
+//declare var Deno : any;
+const FILESPATH = `./FILES`;
+const FILE = {
+    PROJECT: `${FILESPATH}/PROJECT`,
+    SEARCH_STATISTICS: `${FILESPATH}/SEARCH_STATISTICS`,
+    PAGES: `${FILESPATH}/PAGES`,
+    TAGS_FOLDER: `${FILESPATH}/TAGS/`,
+    TAGS: (id)=>`${FILESPATH}/TAGS/${id}`,
+    BLOCKS_FOLDER: `${FILESPATH}/BLOCKS/`,
+    BLOCKS: (id)=>`${FILESPATH}/BLOCKS/${id}`
+};
+var running_change_hash = "-";
+try {
+    let PROJECT = JSON_Deserialize(readFile(FILE.PROJECT), true);
+    running_change_hash = PROJECT.running_change_hash;
+} catch (e) {}
 Deno.serve({
     port: 9020
 }, async function fn(req) {
@@ -530,13 +280,13 @@ Deno.serve({
             socket.send("null");
             return;
         } else if (t[0] == "{") {
-            let js = JSON_Deserialize(t);
+            let js = JSON_Deserialize(t, true);
             let resp = handleJson(js);
             if (resp instanceof Promise) resp = await resp;
             if (resp === undefined) resp = null;
             socket.send(JSON_Serialize(resp));
         } else if (t[0] == "[") {
-            let js = JSON_Deserialize(t);
+            let js = JSON_Deserialize(t, true);
             let r = js.map((o)=>handleJson(o));
             console.log(r);
             if (r instanceof Error) {
@@ -558,97 +308,116 @@ Deno.serve({
     });
     return response;
     function handleJson(json) {
+        const handlers = {
+            [Msg_saveAll]: (r)=>{
+                const { hash, data } = r;
+                if (hash != running_change_hash) return Error("RCH missmatch.");
+                // TODO("save all changes to disk.");
+                for(let i = 0; i < data.length; i++){
+                    let p = data[i].path;
+                    // let [p,d,deleted] = [data[i].path,data[i].data,data[i].deleted];
+                    //,data[i].data,data[i].deleted];
+                    let hasData = "data" in data[i];
+                    let d = data[i].data;
+                    if (p[0] == "PROJECT") {
+                        if (p[1] !== undefined || !hasData) throw Error("Unexpected for PROJECT: " + p[1] + " , " + hasData);
+                        writeFile(FILE.PROJECT, d);
+                    } else if (p[0] == "SEARCH_STATISTICS") {
+                        if (p[1] !== undefined || !hasData) throw Error("Unexpected for SEARCH_STATISTICS: " + p[1] + " , " + hasData);
+                        writeFile(FILE.SEARCH_STATISTICS, d);
+                    } else if (p[0] == "PAGES") {
+                        writeFile(FILE.PAGES, d);
+                    } else if (p[0] == "_TAGS") {
+                        if (p[1] === undefined) throw Error("Unexpected TAGS: " + p[1] + " , " + hasData);
+                        const pth = FILE.TAGS(p[1]);
+                        if (hasData) writeFile(pth, d);
+                        else deleteFile(pth);
+                    } else if (p[0] == "_BLOCKS") {
+                        if (p[1] === undefined) throw Error("Unexpected BLOCKS: " + p[1] + " , " + hasData);
+                        const pth = FILE.BLOCKS(p[1]);
+                        if (hasData) writeFile(pth, d);
+                        else deleteFile(pth);
+                    } else {
+                        return Error("Unknown save path: " + p);
+                    }
+                }
+                return true;
+            },
+            [Msg_eval]: (r)=>{
+                let ret = eval(r.code);
+                console.log("Eval return:", ret);
+                if (ret === undefined) ret = null;
+                return ret;
+            },
+            [Msg_loadInitial]: (r)=>{
+                let ids_BLOCKS = [];
+                let ids_TAGS = [];
+                for (let f of fs.walkSync(FILE.BLOCKS_FOLDER, {
+                    maxDepth: 1 /*,exts:[".pb"]*/ ,
+                    includeDirs: false,
+                    includeFiles: true,
+                    includeSymlinks: false
+                })){
+                    ids_BLOCKS.push(f.name);
+                }
+                for (let f of fs.walkSync(FILE.TAGS_FOLDER, {
+                    maxDepth: 1 /*,exts:[".pb"]*/ ,
+                    includeDirs: false,
+                    includeFiles: true,
+                    includeSymlinks: false
+                })){
+                    ids_TAGS.push(f.name);
+                }
+                return {
+                    PROJECT: readFile(FILE.PROJECT),
+                    SEARCH_STATISTICS: readFile(FILE.SEARCH_STATISTICS),
+                    PAGES: readFile(FILE.PAGES),
+                    ids_BLOCKS,
+                    ids_TAGS
+                };
+            },
+            [Msg_loadBlock]: (r)=>{
+                return client_loadBlock(r.id, r.depth);
+            },
+            [Msg_loadTag]: (r)=>{
+                return client_loadTag(r.id, r.depth);
+            }
+        };
         try {
             let name = json.n;
             let data = json.d;
             console.log("Handling:", name, data);
-            switch(name){
-                case "save_all":
-                    let all = data.all;
-                    for(let id in all){
-                        Deno.writeTextFileSync(`./pb/${id}.pb`, JSON_Serialize(all[id]));
-                    }
-                    return true;
-                case "save":
-                    return true;
-                case "load_all":
-                    return true;
-                case "load":
-                    return true;
-                case 'eval':
-                    let r = eval(data);
-                    console.log("Eval return:", r);
-                    if (r === undefined) r = null;
-                    return r;
-                default:
-                    return null;
-            }
+            if (name in handlers) {
+                return handlers[name];
+            } else return Error("Unknown function to handle: '" + name + "' : " + json);
         } catch (e) {
             return e;
         }
     }
 });
-// Deno.serve({
-//     port:9020,
-//     transport:'tcp'
-// },fn);
-server_init();
-function server_LoadAll() {
-    /*
-    From FILES load following:
-    */ try {
-        let _PAGES = Deno.readTextFileSync("./FILES/pb/PAGES.json");
-        if (_PAGES === null) throw new Error("non existant.");
-        PAGES = JSON_Deserialize(_PAGES);
-        for (let f of fs.walkSync("./FILES/pb/blocks", {
-            maxDepth: 1,
-            /*exts:[".pb"],*/ includeDirs: false,
-            includeFiles: true,
-            includeSymlinks: false
-        })){
-            let id = f.name;
-            BLOCKS[id] = JSON_Deserialize(Deno.readTextFileSync(f.path));
-        }
-        for (let f of fs.walkSync("./FILES/pb/tags", {
-            maxDepth: 1,
-            /*exts:[".pb"],*/ includeDirs: false,
-            includeFiles: true,
-            includeSymlinks: false
-        })){
-            let id = f.name;
-            PAGES[id] = JSON_Deserialize(Deno.readTextFileSync(f.path));
-        }
-    } catch (err) {}
+function writeFile(path, contents) {
+    Deno.writeTextFileSync(path, contents);
 }
-function server_SaveAll() {
-    /*
-    From FILES save following:
-    */ Deno.writeTextFileSync("./FILES/pb/PAGES.json", JSON_Serialize(PAGES));
-    for(let k in BLOCKS){
-        Deno.writeTextFileSync(`./FILES/pb/blocks/${k}`, JSON_Serialize(BLOCKS[k]));
-    }
-    for(let k in TAGS){
-        Deno.writeTextFileSync(`./FILES/pb/tags/${k}`, JSON_Serialize(TAGS[k]));
-    }
+function deleteFile(path) {
+    Deno.removeSync(path);
 }
-function server_init() {
-    //make folders in FILES:
-    // pb:  blocks, tags, extensions
-    // pb_archived:  blocks, tags, extensions
-    server_LoadAll();
+function readFile(path) {
+    return Deno.readTextFileSync(path);
 }
-function client_SaveAll(all_json) {}
-function client_Save(attrPath, data) {
-    attrPath = AttrPath.parse(attrPath);
+function client_loadTag(blockId, depth) {
+    return {
+        blockId: readFile(FILE.TAGS(blockId))
+    };
 }
 function client_loadBlock(blockId, depth) {
     console.log("Loading block:", blockId, depth);
     // attrPath = AttrPath.parse(attrPath);
-    let returnedBlocks = {};
+    let returnedBlocks = {}; //as TBLOCKS;
     function loadBlock(blockId, depth) {
         if (returnedBlocks[blockId] !== undefined) return; //already loaded
-        let block = BLOCKS[blockId];
-        returnedBlocks[blockId] = block;
+        let blockJson = readFile(FILE.BLOCKS(blockId)); //= BLOCKS[blockId];
+        let block = JSON_Deserialize(blockJson, true);
+        returnedBlocks[blockId] = blockJson;
         if (depth <= 0) return;
         for(let i = 0; i < block.children.length; i++)loadBlock(block.children[i], depth - 1);
     }
@@ -656,89 +425,4 @@ function client_loadBlock(blockId, depth) {
     console.log("Loading block result:", returnedBlocks);
     return returnedBlocks;
 }
-function client_LoadInitial() {
-    return {
-        PAGES: PAGES
-    };
-}
-function save_TAGS() {}
-function save_Tag(id) {}
-function save_BLOCKS() {}
-function save_Block(id) {}
-function save_PAGES() {}
-function client_ReLoadAllData(clientData) {
-    /*
-    all those which arent null, send new versions of them.
-    */ let response = {
-        BLOCKS: {},
-        PAGES: PAGES,
-        TAGS: {}
-    };
-    let blcks = Object.keys(BLOCKS);
-    for(let i = 0; i < blcks.length; i++){
-        const k = blcks[i];
-        response.BLOCKS[k] = clientData.BLOCKS[k] === null ? null : BLOCKS[k];
-    }
-    let tags = Object.keys(TAGS);
-    for(let i = 0; i < tags.length; i++){
-        const k = tags[i];
-        response.TAGS[k] = clientData.TAGS[k] === null ? null : TAGS[k];
-    }
-    return response;
-}
-function server_delete(path) {
-    return server_set(path, undefined, false, false);
-}
-function server_set(path, value, createNonExistant = true, errorOnNonExistant = true) {
-    path = AttrPath.parse(path);
-    let id_toSave = '';
-    let p1 = path.shift();
-    if (p1 == "TAGS") {} else if (p1 == "BLOCKS") {} else if (p1 == "PAGES") {} else throw new Error("Uknown path " + p1);
-    let p2 = path.shift(), p3 = undefined;
-    let o;
-    if (p2 === null) {
-        if (p1 == "TAGS") {
-            TAGS = value;
-            save_TAGS();
-        } else if (p1 == "BLOCKS") {
-            BLOCKS = value;
-            save_BLOCKS();
-        } else if (p1 == "PAGES") {
-            PAGES = value;
-            save_PAGES();
-        }
-        return null;
-    } else {
-        if (p1 == "TAGS") o = TAGS;
-        else if (p1 == "BLOCKS") o = BLOCKS;
-        else if (p1 == "PAGES") o = PAGES;
-        id_toSave = p2;
-    }
-    while((p3 = path.shift()) !== undefined){
-        if (o[p2] === undefined) {
-            if (createNonExistant == false) {
-                if (errorOnNonExistant) {
-                    throw new Error("Path doesnt exist.");
-                } else return;
-            } else o[p2] = {}; //dynamically create path.
-        }
-        o = o[p2];
-        p2 = p3;
-    }
-    if (value === undefined) delete o[p2];
-    else o[p2] = value;
-    if (p1 == "BLOCKS") {
-        save_Block(id_toSave);
-    } else if (p1 == "TAGS") {
-        save_Tag(id_toSave);
-    } else {
-        throw new Error("Unexpected path to save: " + p1);
-    }
-}
-const MsgType = {
-    saveAll: "save_all",
-    loadAll: "load_all",
-    load: "load",
-    eval: "eval"
-};
 

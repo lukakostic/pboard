@@ -28,7 +28,7 @@ class Page_Visual{
     render(){
         const p = this.page();
         this.children = [];
-        document.title = p.pageTitle;
+        document.title = p.pageTitle ?? "";
         this.childrenHolderEl.innerHTML = ""; // clear
         function makeBlockAndChildrenIfExist(bv:Block_Visual){
             //bv already exists and is created. Now we need to create visuals for its children (and theirs).
