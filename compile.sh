@@ -22,6 +22,8 @@ wait #for above & to finish
 
 shopt -u extglob
 
+bash ./makeFolders.sh
+
 
 #############################
 # rmdir built &&
