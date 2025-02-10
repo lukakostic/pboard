@@ -6,10 +6,12 @@ bash ./deleteAll.sh
 
 #bash ./src_buildSys/execute.sh    ### ne treba nam vise codegen
 
-(cat -s ./src/*.{ts,js} ./src/client/*.{ts,js} ./src/client/*/*.{ts,js} ./src/client/*/*/*.{ts,js} > ./built/client/CLIENT.ts ;\
+# (cat -s ./src/*.{ts,js} ./src/client/*.{ts,js} ./src/client/*/*.{ts,js} ./src/client/*/*/*.{ts,js} > 
+( deno run --allow-read concatDeno.ts ./src/ --extensions .ts.js --depth 4 --excludePaths ./src/server ./src/external > ./built/client/CLIENT.ts ;\
 npx swc ./built/client/CLIENT.ts -o ./built/client/CLIENT.js ) &
 
-(cat -s ./src/*.{ts,js} ./src/server/*.{ts,js} ./src/server/*/*.{ts,js} ./src/server/*/*/*.{ts,js} > ./built/server/SERVER.ts ;\
+# (cat -s ./src/*.{ts,js} ./src/server/*.{ts,js} ./src/server/*/*.{ts,js} ./src/server/*/*/*.{ts,js} > ./built/server/SERVER.ts ;\
+( deno run --allow-read concatDeno.ts ./src/ --extensions .ts.js --depth 4 --excludePaths ./src/client ./src/external > ./built/server/SERVER.ts ;\
 npx swc ./built/server/SERVER.ts -o ./built/server/SERVER.js ) &
 
 

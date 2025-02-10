@@ -1,3 +1,7 @@
+//######################
+// File: 0Common.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/0Common.ts
+//######################
 let TODO = (txt = "")=>{
     throw new Error("[TODO]" + txt);
 };
@@ -50,20 +54,21 @@ function assert_non_null(thing, msg = "", actuallyCheck1_OrReturn0 = true) {
     }
     return thing;
 }
-// let __SerializableClasses = [Block];
-// let __classToId = new WeakMap<any,string>();
+//######################
+// File: 1Serializer.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/1Serializer.ts
+//######################
+// class ClassInfo{
+//     _class :any;
+//     defaults : any;
+// };
+// let __IdToClassInfo : {[classId:string]:ClassInfo};
 let __IdToClass = {};
-// __SerializableClasses.forEach((e,i)=>{if(e)__classToId.set(e,i);});
-// let __registeredClasses : {[index:string]:any} = {}; // class.name => class (obj)
-/** Register class as serializable.
- * @param suffix   if 2 classes have same name, use this to differentiate. MUST BE JSON-FRINEDLY STRING.
- */ function RegClass(_class) {
+function RegClass(_class) {
     console.log("REGISTERING CLASS", _class);
-    // if(__classToId.has(_class)) return __classToId.get(_class);
-    let id = _class.name; // + suffix;
+    let id = _class.name; // + HashClass(class)
     console.log("Registering ID:", id);
     if (__IdToClass[id] != null) throw new Error("Clashing class names. " + id);
-    // __classToId.set(_class,id);  //register class name with class
     __IdToClass[id] = _class; //register class name to class object
     return id;
 }
@@ -73,24 +78,12 @@ class Unknown_SerializeClass {
 // RegClass(Unknown_SerializeClass);
 function SerializeClass(originalObj, _class) {
     let cls = _class ?? Object.getPrototypeOf(originalObj).constructor;
-    // console.log("___SerializeClass ",cls,originalObj instanceof Error);
     if (originalObj instanceof Error) cls = Error;
-    // console.log(cls);
     if (cls == Object || originalObj["$$C"]) return '';
     let id = cls.name;
-    if (__IdToClass[id] === undefined) {
-        // cls = Unknown_SerializeClass;
-        // id = cls.name;
-        throw new Error("Class not registered for serialization: " + id);
-    }
-    // let idx = __classToId.get(cls);
-    // if(typeof idx != null) throw new Error("Class not registered for serialization:"+cls.name);
+    if (__IdToClass[id] === undefined) throw new Error("Class not registered for serialization: " + id);
     return `"$$C":"${id}"`;
-//originalObj.__$class$__ = idx; // __$class$__
-//return originalObj;
 }
-// function DeserializeClass(scaffoldObj){ //obj is of no class, its an object. but it has a .__$class$__ property
-// }
 function ApplyClass(obj, _class) {
     if (_class.prototype) Object.setPrototypeOf(obj, _class.prototype);
     else Object.setPrototypeOf(obj, _class);
@@ -225,7 +218,11 @@ function JSON_Deserialize(str, allowUnknownClasses = false) {
 
  NO CIRCULAR REFERENCES.
  No arrays with special properties or classes.
-*********************/ /************* 
+*********************/ //######################
+// File: 2Messages.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/2Messages.ts
+//######################
+/************* 
 Messages are mostly client -> server.
 Msg = code of message
 TCMsg = type of client request
@@ -247,6 +244,10 @@ const Msg_loadTag = 'loadTag';
 const CMsg_loadTag = _MakeMsg(Msg_loadTag);
 const Msg_backup = 'backup';
 const CMsg_backup = _MakeMsg(Msg_backup);
+//######################
+// File: server/9server.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/server/9server.ts
+//######################
 // import { serve } from "https://deno.land/std@0.177.0/http/mod.ts";
 // import { serveDirWithTs } from "https://deno.land/x/ts_serve@v1.4.6/mod.ts";
 import { serveDirWithTs } from "jsr:@ayame113/ts-serve";

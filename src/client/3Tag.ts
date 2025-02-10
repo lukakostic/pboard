@@ -1,10 +1,10 @@
 
 class Tag{ 
     static _serializable_default = {attribs:{},parentTagId:"",childrenTags:[]};
+    id:Id;
     name : string | null; // null ako preuzima ime od rootBlock.
     rootBlock? : Id; //ako je tag baziran na bloku
 
-    id:Id;
     parentTagId:Id;
     childrenTags:Id[];
     blocks:Id[];

@@ -1,20 +1,16 @@
 
-// let __SerializableClasses = [Block];
-// let __classToId = new WeakMap<any,string>();
+// class ClassInfo{
+//     _class :any;
+//     defaults : any;
+// };
+// let __IdToClassInfo : {[classId:string]:ClassInfo};
 let __IdToClass : {[index:string]:any} = {};
-// __SerializableClasses.forEach((e,i)=>{if(e)__classToId.set(e,i);});
-// let __registeredClasses : {[index:string]:any} = {}; // class.name => class (obj)
 
-/** Register class as serializable.
- * @param suffix   if 2 classes have same name, use this to differentiate. MUST BE JSON-FRINEDLY STRING.
- */
-function RegClass(_class:any){ /*Serialize class.*/
+function RegClass(_class:any){ 
     console.log("REGISTERING CLASS",_class);
-    // if(__classToId.has(_class)) return __classToId.get(_class);
-    let id = _class.name;// + suffix;
+    let id = _class.name; // + HashClass(class)
     console.log("Registering ID:" ,id);
     if(__IdToClass[id] != null) throw new Error("Clashing class names. "+id); 
-    // __classToId.set(_class,id);  //register class name with class
     __IdToClass[id] = _class; //register class name to class object
     return id;
 }
@@ -23,25 +19,14 @@ class Unknown_SerializeClass{}
 // RegClass(Unknown_SerializeClass);
 function SerializeClass(originalObj:any,_class?:any){ //obj is of some class
     let cls = _class ?? Object.getPrototypeOf(originalObj).constructor;
-    // console.log("___SerializeClass ",cls,originalObj instanceof Error);
     if(originalObj instanceof Error) cls = Error;
-    // console.log(cls);
     if(cls == Object || (originalObj["$$C"])) return '';
     let id = cls.name;
-    if(__IdToClass[id] === undefined){
-        // cls = Unknown_SerializeClass;
-        // id = cls.name;
-
-        throw new Error("Class not registered for serialization: "+id); 
-    }
-    // let idx = __classToId.get(cls);
-    // if(typeof idx != null) throw new Error("Class not registered for serialization:"+cls.name);
+    if(__IdToClass[id] === undefined) throw new Error("Class not registered for serialization: "+id); 
+    
     return `"$$C":"${id}"`;
-    //originalObj.__$class$__ = idx; // __$class$__
-    //return originalObj;
+    
 }
-// function DeserializeClass(scaffoldObj){ //obj is of no class, its an object. but it has a .__$class$__ property
-// }
 
 function ApplyClass(obj:any,_class:any){
     if(_class.prototype) // is function not class.
@@ -73,7 +58,6 @@ function JSON_Serialize(obj:any){//,  key?:string,parent?:any){
     // console.log("serializing:",obj);
     if(obj === null) return "null";
     else if(obj === undefined) return null;  //skip
-    //return "null";
     //else if(typeof obj ==='string') return `"${EscapeStr(obj)}"`;
     else if(Array.isArray(obj)){
         let defaults = Object.getPrototypeOf(obj).constructor._serializable_default ?? {};

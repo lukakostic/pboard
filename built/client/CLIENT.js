@@ -1,3 +1,7 @@
+//######################
+// File: 0Common.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/0Common.ts
+//######################
 let TODO = (txt = "")=>{
     throw new Error("[TODO]" + txt);
 };
@@ -50,20 +54,21 @@ function assert_non_null(thing, msg = "", actuallyCheck1_OrReturn0 = true) {
     }
     return thing;
 }
-// let __SerializableClasses = [Block];
-// let __classToId = new WeakMap<any,string>();
+//######################
+// File: 1Serializer.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/1Serializer.ts
+//######################
+// class ClassInfo{
+//     _class :any;
+//     defaults : any;
+// };
+// let __IdToClassInfo : {[classId:string]:ClassInfo};
 let __IdToClass = {};
-// __SerializableClasses.forEach((e,i)=>{if(e)__classToId.set(e,i);});
-// let __registeredClasses : {[index:string]:any} = {}; // class.name => class (obj)
-/** Register class as serializable.
- * @param suffix   if 2 classes have same name, use this to differentiate. MUST BE JSON-FRINEDLY STRING.
- */ function RegClass(_class) {
+function RegClass(_class) {
     console.log("REGISTERING CLASS", _class);
-    // if(__classToId.has(_class)) return __classToId.get(_class);
-    let id = _class.name; // + suffix;
+    let id = _class.name; // + HashClass(class)
     console.log("Registering ID:", id);
     if (__IdToClass[id] != null) throw new Error("Clashing class names. " + id);
-    // __classToId.set(_class,id);  //register class name with class
     __IdToClass[id] = _class; //register class name to class object
     return id;
 }
@@ -73,24 +78,12 @@ class Unknown_SerializeClass {
 // RegClass(Unknown_SerializeClass);
 function SerializeClass(originalObj, _class) {
     let cls = _class ?? Object.getPrototypeOf(originalObj).constructor;
-    // console.log("___SerializeClass ",cls,originalObj instanceof Error);
     if (originalObj instanceof Error) cls = Error;
-    // console.log(cls);
     if (cls == Object || originalObj["$$C"]) return '';
     let id = cls.name;
-    if (__IdToClass[id] === undefined) {
-        // cls = Unknown_SerializeClass;
-        // id = cls.name;
-        throw new Error("Class not registered for serialization: " + id);
-    }
-    // let idx = __classToId.get(cls);
-    // if(typeof idx != null) throw new Error("Class not registered for serialization:"+cls.name);
+    if (__IdToClass[id] === undefined) throw new Error("Class not registered for serialization: " + id);
     return `"$$C":"${id}"`;
-//originalObj.__$class$__ = idx; // __$class$__
-//return originalObj;
 }
-// function DeserializeClass(scaffoldObj){ //obj is of no class, its an object. but it has a .__$class$__ property
-// }
 function ApplyClass(obj, _class) {
     if (_class.prototype) Object.setPrototypeOf(obj, _class.prototype);
     else Object.setPrototypeOf(obj, _class);
@@ -225,7 +218,11 @@ function JSON_Deserialize(str, allowUnknownClasses = false) {
 
  NO CIRCULAR REFERENCES.
  No arrays with special properties or classes.
-*********************/ /************* 
+*********************/ //######################
+// File: 2Messages.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/2Messages.ts
+//######################
+/************* 
 Messages are mostly client -> server.
 Msg = code of message
 TCMsg = type of client request
@@ -247,7 +244,56 @@ const Msg_loadTag = 'loadTag';
 const CMsg_loadTag = _MakeMsg(Msg_loadTag);
 const Msg_backup = 'backup';
 const CMsg_backup = _MakeMsg(Msg_backup);
+//######################
+// File: client/0000DEBUG.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0000DEBUG.ts
+//######################
 var DEBUG = true;
+var DIRTY = {
+    _: [],
+    error: null,
+    mark (singleton, id, isDeleted = false) {
+        // check if user didnt make mistake in strEval string: 
+        try {
+            eval(this.evalStringResolve(singleton, id));
+        } catch (e) {
+            throw Error("Eval cant find object " + singleton + " id " + id + ". :" + e);
+        }
+        const require_id = [
+            "_BLOCKS",
+            "_TAGS"
+        ];
+        if (require_id.includes(singleton) && id === undefined) throw Error(`${singleton} requires an ID but none provided.`);
+        if (require_id.includes(singleton) == false && id !== undefined) throw Error(`${singleton} doesnt support an ID but id '${id}' was provided.`);
+        this._ = this._.filter((p)=>!(p[0] == singleton && p[1] == id)); // && (isDeleted?(p[2]==true):(p[2]!=true))));
+        //remove all which have same singleton and id.    
+        // for(let i = this._.length-1; i>=0;i--){
+        //         if(singleton == this._[i][0]){
+        //             if(id===this._[i][1])
+        //                 this._.splice(i,1);
+        //             // if(id!==undefined && this._[i][1]===undefined) return; //theyre more specific than us!
+        //             // if((id===this._[i][1]) || (this._[i][1]!==undefined && id===undefined)){
+        //             //     this._.splice(i,1);
+        //             //     break;
+        //             // }
+        //         }
+        //     }
+        this._.push([
+            singleton,
+            id,
+            isDeleted
+        ]);
+    // console.error("Marked: ",[singleton,id,isDeleted]);
+    },
+    evalStringResolve (singleton, id) {
+        let finalEvalStr = singleton;
+        if (id !== undefined) {
+            finalEvalStr += `["${id}"]`;
+        }
+        //else throw Error("Unexpected evalStr length: " + JSON.stringify(strEval));
+        return finalEvalStr;
+    }
+};
 const HELP = {
     topics: {
         Navigation: `
@@ -295,141 +341,18 @@ Delete : delete block
         });
     }
 };
-var Server = {
-    __WebSock: new WebSocket("ws://localhost:9020"),
-    __SockOpen: false,
-    /*
-new Promise((resolve, reject) => {
-    WebSock.onopen(()=>resolve());
-});*/ __MsgQueue: [],
-    // let msgId = 0;
-    // msg: {text:null,cb:null}         //
-    // msg: {promise:true, text:null}   //promisify automatically
-    sendMsg (msg) {
-        // msgId++;
-        // msg.id = msgId;
-        let promise = null;
-        if (msg.cb === undefined) promise = new Promise((resolve, reject)=>{
-            msg.cb = resolve;
-        });
-        this.__MsgQueue.push(msg);
-        if (this.__SockOpen) this.__WebSock.send(JSON_Serialize({
-            n: msg.n,
-            d: msg.d
-        }));
-        if (promise !== null) return promise;
-    }
-};
-Server.__WebSock.onopen = (event)=>{
-    Server.__SockOpen = true;
-    for(let i = 0; i < Server.__MsgQueue.length; i++)Server.__WebSock.send(JSON_Serialize({
-        n: Server.__MsgQueue[i].n,
-        d: Server.__MsgQueue[i].d
-    }));
-    console.log("Open");
-// WebSock.send("Here's some text that the server is urgently awaiting!");
-};
-WARN("Da ne radim .shift nego attachujem ID na sent message i uklonim appropriate ID.");
-Server.__WebSock.onmessage = (event)=>{
-    let m = Server.__MsgQueue.shift();
-    let dataTxt = event.data;
-    console.log("websock recv:", dataTxt);
-    let data;
-    // if(dataTxt.startsWith("error")){
-    //     data = new Error(JSON_Deserialize(dataTxt.substring("error".length)));
-    // }else{
-    data = JSON_Deserialize(dataTxt);
-    // }
-    m.cb(data);
-// console.log(event.data);
-};
-var DIRTY = {
-    _: [],
-    error: null,
-    mark (singleton, id, isDeleted = false) {
-        // check if user didnt make mistake in strEval string: 
-        try {
-            eval(this.evalStringResolve(singleton, id));
-        } catch (e) {
-            throw Error("Eval cant find object " + singleton + " id " + id + ". :" + e);
-        }
-        const require_id = [
-            "_BLOCKS",
-            "_TAGS"
-        ];
-        if (require_id.includes(singleton) && id === undefined) throw Error(`${singleton} requires an ID but none provided.`);
-        if (require_id.includes(singleton) == false && id !== undefined) throw Error(`${singleton} doesnt support an ID but id '${id}' was provided.`);
-        this._ = this._.filter((p)=>!(p[0] == singleton && p[1] == id)); // && (isDeleted?(p[2]==true):(p[2]!=true))));
-        //remove all which have same singleton and id.    
-        // for(let i = this._.length-1; i>=0;i--){
-        //         if(singleton == this._[i][0]){
-        //             if(id===this._[i][1])
-        //                 this._.splice(i,1);
-        //             // if(id!==undefined && this._[i][1]===undefined) return; //theyre more specific than us!
-        //             // if((id===this._[i][1]) || (this._[i][1]!==undefined && id===undefined)){
-        //             //     this._.splice(i,1);
-        //             //     break;
-        //             // }
-        //         }
-        //     }
-        this._.push([
-            singleton,
-            id,
-            isDeleted
-        ]);
-    // console.error("Marked: ",[singleton,id,isDeleted]);
-    },
-    evalStringResolve (singleton, id) {
-        let finalEvalStr = singleton;
-        if (id !== undefined) {
-            finalEvalStr += `["${id}"]`;
-        }
-        //else throw Error("Unexpected evalStr length: " + JSON.stringify(strEval));
-        return finalEvalStr;
-    }
-};
-/**
- * Like a normal array but it mocks pop,push,splice functions, 
- * so when called it calls this.set() function of object.
- * Telling it the array was modified.
- */ /*
-class ProxyArraySetter_NO{
-    __obj:any; __field:string;
-    constructor(obj:any,field:string){
-        this.__obj = obj;
-        this.__field = field;
-    }
-    static __new(obj:any,field:string,existingArray:any[]|null=null){
-        let arr;
-        if(existingArray===null){
-            arr = [];
-            // arr.push(...obj[field]);
-        }else arr = existingArray;
-        let p = new ProxyArraySetter(obj,field);
-        Object.assign(arr,p);
-        return ApplyClass(arr,ProxyArraySetter) as any[];
-    }
-    push(...items:any){
-        let r = Array.prototype.push.apply(this,items);
-        this.__obj.set(this.__field,this,false);
-        return r;
-    }
-    pop(...items:any){
-        let r = Array.prototype.pop.apply(this,items);
-        this.__obj.set(this.__field,this,false);
-        return r;
-    }
-    splice(...items:any){
-        let r = Array.prototype.splice.apply(this,items);
-        this.__obj.set(this.__field,this,false);
-        return r;
-    }
-}
-*/ /** same as array. */ //declare type TProxyArraySetter_NO<T> = T[];
+//######################
+// File: client/0Preferences.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0Preferences.ts
+//######################
 // class PreferencesClass {
 //     this.pageView_maxWidth :number;
 // };
 // RegClass(PreferencesClass);
+//######################
+// File: client/0Project.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0Project.ts
+//######################
 class ProjectClass {
     running_change_hash;
     __runningId;
@@ -587,6 +510,59 @@ class SearchStatistics {
     }
 }
 RegClass(SearchStatistics);
+var Server = {
+    __WebSock: new WebSocket("ws://localhost:9020"),
+    __SockOpen: false,
+    /*
+new Promise((resolve, reject) => {
+    WebSock.onopen(()=>resolve());
+});*/ __MsgQueue: [],
+    // let msgId = 0;
+    // msg: {text:null,cb:null}         //
+    // msg: {promise:true, text:null}   //promisify automatically
+    sendMsg (msg) {
+        // msgId++;
+        // msg.id = msgId;
+        let promise = null;
+        if (msg.cb === undefined) promise = new Promise((resolve, reject)=>{
+            msg.cb = resolve;
+        });
+        this.__MsgQueue.push(msg);
+        if (this.__SockOpen) this.__WebSock.send(JSON_Serialize({
+            n: msg.n,
+            d: msg.d
+        }));
+        if (promise !== null) return promise;
+    }
+};
+Server.__WebSock.onopen = (event)=>{
+    Server.__SockOpen = true;
+    for(let i = 0; i < Server.__MsgQueue.length; i++)Server.__WebSock.send(JSON_Serialize({
+        n: Server.__MsgQueue[i].n,
+        d: Server.__MsgQueue[i].d
+    }));
+    console.log("Open");
+// WebSock.send("Here's some text that the server is urgently awaiting!");
+};
+WARN("Da ne radim .shift nego attachujem ID na sent message i uklonim appropriate ID.");
+Server.__WebSock.onmessage = (event)=>{
+    let m = Server.__MsgQueue.shift();
+    let dataTxt = event.data;
+    console.log("websock recv:", dataTxt);
+    let data;
+    // if(dataTxt.startsWith("error")){
+    //     data = new Error(JSON_Deserialize(dataTxt.substring("error".length)));
+    // }else{
+    data = JSON_Deserialize(dataTxt);
+    // }
+    m.cb(data);
+// console.log(event.data);
+};
+// WebSock.send("Here's some text that the server is urgently awaiting!");
+//######################
+// File: client/1BlkFn_server.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/1BlkFn_server.ts
+//######################
 //let $CL = typeof($IS_CLIENT$)!==undefined; // true for client, false on server
 /*
 let $$$CL_ret ->  call fn and return its return (do nothing)
@@ -747,6 +723,10 @@ So if i have this build-time way of saying "clone this fn, diff this fn" then i 
     // return true;
     }
 };
+//######################
+// File: client/1client.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/1client.ts
+//######################
 var PROJECT = new ProjectClass();
 var SEARCH_STATISTICS = new SearchStatistics();
 var _BLOCKS = {}; // all blocks
@@ -915,6 +895,10 @@ async function loadTag(blockId, depth) {
         _TAGS[key] = JSON_Deserialize(newBLOCKS_partial[key]);
     }
 }
+//######################
+// File: client/2Blocks.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/2Blocks.ts
+//######################
 class Block {
     static _serializable_default = {
         text: "",
@@ -928,7 +912,6 @@ class Block {
     refCount;
     pageTitle;
     text;
-    //usually-empty
     children;
     tags;
     attribs;
@@ -978,15 +961,19 @@ class Block {
     }
 }
 RegClass(Block);
+//######################
+// File: client/3Tag.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/3Tag.ts
+//######################
 class Tag {
     static _serializable_default = {
         attribs: {},
         parentTagId: "",
         childrenTags: []
     };
+    id;
     name;
     rootBlock;
-    id;
     parentTagId;
     childrenTags;
     blocks;
@@ -1038,38 +1025,34 @@ class Tag {
     }
 }
 RegClass(Tag);
-setTimeout(async function InitialOpen() {
-    await LoadInitial();
-    autosaveInterval = setInterval(()=>{
-        SaveAll();
-    }, 8000);
-    if (Object.keys(PAGES).length == 0) {
-        let pageName = prompt("No pages exist. Enter a new page name:"); // || "";
-        if (pageName == null) {
-            window.location.reload();
-            return;
-        }
-        let p = await Block.newPage(pageName);
-        await view.openPage(p.id);
-    } else {
-        let pageName = prompt("No page open. Enter page name (must be exact):"); // || "";
-        let srch;
-        //[TODO] use searcher, not this prompt.
-        if (pageName == null || (srch = await BlkFn.SearchPages(pageName, 'includes')).length < 1) {
-            // console.error(srch);
-            window.location.reload();
-            return;
-        }
-        await view.openPage(srch[0]);
-    }
-}, 1);
 class Window_Tab {
     rootWindow;
     contentsWindow;
+    constructor(rootWindow, contentsWindow){
+        this.rootWindow = rootWindow;
+        this.contentsWindow = contentsWindow;
+    }
 }
 class Window {
     name;
     tabs;
+    constructor(name){
+        this.name = name;
+        this.tabs = [];
+    }
+    html() {
+        LEEJS.div({
+            class: "window"
+        }, LEEJS.div({
+            class: "header"
+        }), LEEJS.div({
+            class: "body"
+        }, LEEJS.div({
+            class: "tabs"
+        }), LEEJS.div({
+            class: "contents"
+        })));
+    }
 }
 async function selectBlock(b, editText = null) {
     // if(selected_block==b && editText===inTextEditMode) return;
@@ -1116,10 +1099,14 @@ function FocusElement(el) {
     // el.dispatchEvent(new FocusEvent("focus"));
     // console.error("FOCUSING ",el);
     el.focus();
-} /*
+}
+//######################
+// File: client/3View/Logseq/3Page_Visual.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/3View/Logseq/3Page_Visual.ts
+//######################
+/*
 User is viewing a single page.
-*/ 
-class Page_Visual {
+*/ class Page_Visual {
     pageId;
     children;
     childrenHolderEl;
@@ -1798,4 +1785,33 @@ class Block_Visual {
         this.updateStyle();
     }
 }
+//######################
+// File: client/init.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/init.ts
+//######################
+setTimeout(async function InitialOpen() {
+    await LoadInitial();
+    autosaveInterval = setInterval(()=>{
+        SaveAll();
+    }, 8000);
+    if (Object.keys(PAGES).length == 0) {
+        let pageName = prompt("No pages exist. Enter a new page name:"); // || "";
+        if (pageName == null) {
+            window.location.reload();
+            return;
+        }
+        let p = await Block.newPage(pageName);
+        await view.openPage(p.id);
+    } else {
+        let pageName = prompt("No page open. Enter page name (must be exact):"); // || "";
+        let srch;
+        //[TODO] use searcher, not this prompt.
+        if (pageName == null || (srch = await BlkFn.SearchPages(pageName, 'includes')).length < 1) {
+            // console.error(srch);
+            window.location.reload();
+            return;
+        }
+        await view.openPage(srch[0]);
+    }
+}, 1);
 

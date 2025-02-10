@@ -6,10 +6,9 @@ class Block{
     id:Id;
     refCount:number;
     
-    pageTitle?:string;  //if has title then its a page!
+    pageTitle?:string;
     text:string;
 
-    //usually-empty
     children:Id[];
     tags:Id[];
     attribs:objectA;
@@ -28,7 +27,6 @@ class Block{
     DIRTY(){this.validate();DIRTY.mark("_BLOCKS",this.id);}
     DIRTY_deleted(){DIRTY.mark("_BLOCKS",this.id,true);}
     static DIRTY_deletedS(id:Id){DIRTY.mark("_BLOCKS",id,true);}
-
     validate(){} // nothing to validate. Maybe pageTitle cant be set if Block isnt in PAGES ?
 
     static async new(text="",  waitServerSave=true):Promise<Block>{

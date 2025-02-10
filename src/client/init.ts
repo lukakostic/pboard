@@ -2,7 +2,7 @@
 setTimeout((async function InitialOpen(){ //ask user to open some page (or make a page if none exist)
     await LoadInitial();
 
-    autosaveInterval = setInterval(()=>{ //autosave timer
+    autosaveInterval = setInterval(()=>{ //autosave timer 
         SaveAll();
     },8000);
 

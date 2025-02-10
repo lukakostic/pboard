@@ -1,4 +1,10 @@
 
+//######################
+// File: 0Common.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/0Common.ts
+//######################
+
+
 type Id = string;
 type TMap<Tk,Tv> = {[index:string]:Tv};
 
@@ -50,6 +56,7 @@ function isEmptyObject(o:any){
     return true;
 }
 
+
 function filterNullMap( mapObj :any ) :any{
     const m = {} as any;
     for(let k in mapObj){
@@ -68,22 +75,25 @@ function assert_non_null(thing:any,msg="", actuallyCheck1_OrReturn0=true){
     }
     return thing;
 }
-// let __SerializableClasses = [Block];
-// let __classToId = new WeakMap<any,string>();
-let __IdToClass : {[index:string]:any} = {};
-// __SerializableClasses.forEach((e,i)=>{if(e)__classToId.set(e,i);});
-// let __registeredClasses : {[index:string]:any} = {}; // class.name => class (obj)
 
-/** Register class as serializable.
- * @param suffix   if 2 classes have same name, use this to differentiate. MUST BE JSON-FRINEDLY STRING.
- */
-function RegClass(_class:any){ /*Serialize class.*/
+//######################
+// File: 1Serializer.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/1Serializer.ts
+//######################
+
+
+// class ClassInfo{
+//     _class :any;
+//     defaults : any;
+// };
+// let __IdToClassInfo : {[classId:string]:ClassInfo};
+let __IdToClass : {[index:string]:any} = {};
+
+function RegClass(_class:any){ 
     console.log("REGISTERING CLASS",_class);
-    // if(__classToId.has(_class)) return __classToId.get(_class);
-    let id = _class.name;// + suffix;
+    let id = _class.name; // + HashClass(class)
     console.log("Registering ID:" ,id);
     if(__IdToClass[id] != null) throw new Error("Clashing class names. "+id); 
-    // __classToId.set(_class,id);  //register class name with class
     __IdToClass[id] = _class; //register class name to class object
     return id;
 }
@@ -92,25 +102,14 @@ class Unknown_SerializeClass{}
 // RegClass(Unknown_SerializeClass);
 function SerializeClass(originalObj:any,_class?:any){ //obj is of some class
     let cls = _class ?? Object.getPrototypeOf(originalObj).constructor;
-    // console.log("___SerializeClass ",cls,originalObj instanceof Error);
     if(originalObj instanceof Error) cls = Error;
-    // console.log(cls);
     if(cls == Object || (originalObj["$$C"])) return '';
     let id = cls.name;
-    if(__IdToClass[id] === undefined){
-        // cls = Unknown_SerializeClass;
-        // id = cls.name;
-
-        throw new Error("Class not registered for serialization: "+id); 
-    }
-    // let idx = __classToId.get(cls);
-    // if(typeof idx != null) throw new Error("Class not registered for serialization:"+cls.name);
+    if(__IdToClass[id] === undefined) throw new Error("Class not registered for serialization: "+id); 
+    
     return `"$$C":"${id}"`;
-    //originalObj.__$class$__ = idx; // __$class$__
-    //return originalObj;
+    
 }
-// function DeserializeClass(scaffoldObj){ //obj is of no class, its an object. but it has a .__$class$__ property
-// }
 
 function ApplyClass(obj:any,_class:any){
     if(_class.prototype) // is function not class.
@@ -142,7 +141,6 @@ function JSON_Serialize(obj:any){//,  key?:string,parent?:any){
     // console.log("serializing:",obj);
     if(obj === null) return "null";
     else if(obj === undefined) return null;  //skip
-    //return "null";
     //else if(typeof obj ==='string') return `"${EscapeStr(obj)}"`;
     else if(Array.isArray(obj)){
         let defaults = Object.getPrototypeOf(obj).constructor._serializable_default ?? {};
@@ -262,7 +260,14 @@ function JSON_Deserialize(str:string,allowUnknownClasses=false):any{
 
  NO CIRCULAR REFERENCES.
  No arrays with special properties or classes.
-*********************//************* 
+*********************/
+
+//######################
+// File: 2Messages.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/2Messages.ts
+//######################
+
+/************* 
 Messages are mostly client -> server.
 Msg = code of message
 TCMsg = type of client request
@@ -311,125 +316,27 @@ type TCMsg_backup = null;
 type TSMsg_backup = Error|true;
 const CMsg_backup = _MakeMsg<TCMsg_backup,TSMsg_backup>(Msg_backup);
 
+
+
+//######################
+// File: client/0000DEBUG.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0000DEBUG.ts
+//######################
+
 var DEBUG = true;
 
-type HELP_CodeHint = { desc:string, sourceLocation:string[] };
-type HELP_TOPIC = "Navigation";
-const HELP = {
-    topics: {
-        Navigation:`
-### all of these dont cycle. You wont wrap to first child if you keep going down. ###
-ArrowUp : Above (any level)
-ArrowUp + Shift : Above (same level)
-ArrowDown : Below  (any level)
-ArrowDown + Shift : Above (same level)
-ArrowLeft : Select parent
-ArrowRight : Select parent's sibling below
-Tab : Below  (any level)
-Tab + Shift: Above  (any level)
 
-Escape (bock selection mode): Unselect block
-Escape (text edit mode): Go to block selection mode
 
-Enter (block selection mode):  Edit text  (go to text edit mode)
-
-Delete : delete block
-        `.trim(),
-    } as Record<HELP_TOPIC,string>,
-    // locations (and descriptions) in code to where you can find implementation of mentioned feature/topic
-    codeHints:{} as { [topic in HELP_TOPIC ]?: HELP_CodeHint[] },
-    logCodeHint(topic:HELP_TOPIC, description:string){
-        function getCodeLocation(){
-            return (new Error()).stack!.split("\n").reverse().slice(2);
-            // const e = new Error();
-            // const regex = /\((.*):(\d+):(\d+)\)$/
-            // const match = regex.exec(e.stack!.split("\n")[2]);
-            // return {
-            //     filepath: match[1],
-            //     line: match[2],
-            //     column: match[3]
-            // };
-        }
-        if(!(topic in this.topics))
-            throw Error("Unknown topic: "+topic);
-        if(this.codeHints[topic] && this.codeHints[topic].some(ch=>(ch.desc==description))){
-            //code hint is already present.
-            return;
-        }
-        
-        ( // array of codeHints for topic
-            (topic in this.codeHints) ? this.codeHints[topic]!  //get existing 
-            : (this.codeHints[topic] = [])   // create new
-        ).push(  // push codeHint object
-            {desc:description,sourceLocation:getCodeLocation()}
-        );
-        
-    }
-}
-
-type ServerMsg = {n:string,d?:any,cb?:Function}; //n=name
-var Server = {
-    __WebSock : new WebSocket("ws://localhost:9020"),
-    __SockOpen : false,
-/*
-new Promise((resolve, reject) => {
-    WebSock.onopen(()=>resolve());
-});*/
-
-    __MsgQueue : [] as {n:string,d?:any,cb:Function}[], // 
-// let msgId = 0;
-// msg: {text:null,cb:null}         //
-// msg: {promise:true, text:null}   //promisify automatically
-    sendMsg(msg:ServerMsg){
-        // msgId++;
-        // msg.id = msgId;
-
-        let promise:any = null;
-        if(msg.cb === undefined)
-            promise = new Promise((resolve,reject)=>{
-                msg.cb = resolve; 
-            });
-
-        this.__MsgQueue.push(msg as any);
-        
-        if(this.__SockOpen)
-            this.__WebSock.send(JSON_Serialize({n:msg.n,d:msg.d})!);
-
-        if(promise!==null) return promise;
-    }
-};
-
-Server.__WebSock.onopen = (event) => {
-    Server.__SockOpen = true;
-    for(let i = 0; i < Server.__MsgQueue.length; i++) //send unsent ones
-        Server.__WebSock.send(JSON_Serialize({n:Server.__MsgQueue[i].n,d:Server.__MsgQueue[i].d})!);
-        
-
-    console.log("Open");
-    // WebSock.send("Here's some text that the server is urgently awaiting!");
-};
-
-WARN("Da ne radim .shift nego attachujem ID na sent message i uklonim appropriate ID.")
-Server.__WebSock.onmessage = (event) => {
-    let m = Server.__MsgQueue.shift()!;
-    let dataTxt = event.data as string;
-    console.log("websock recv:",dataTxt);
-    let data;
-    // if(dataTxt.startsWith("error")){
-    //     data = new Error(JSON_Deserialize(dataTxt.substring("error".length)));
-    // }else{
-        data = JSON_Deserialize(dataTxt);
-    // }
-    m.cb(data);
-    // console.log(event.data);
-};
-
-// WebSock.send("Here's some text that the server is urgently awaiting!");
+//######################
+// File: client/00DIRTY.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/00DIRTY.ts
+//######################
 
 type _DIRTY_Entry = [string,Id|undefined,boolean];
 var DIRTY = {
     _ : [] as _DIRTY_Entry[],
     error : null as null|Error,
+
 
     mark(singleton:string,id?:any,isDeleted=false) :void{
         // check if user didnt make mistake in strEval string: 
@@ -508,10 +415,89 @@ class ProxyArraySetter_NO{
 /** same as array. */
 //declare type TProxyArraySetter_NO<T> = T[];
 
+
+
+//######################
+// File: client/0000HELP.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0000HELP.ts
+//######################
+
+
+
+type HELP_CodeHint = { desc:string, sourceLocation:string[] };
+type HELP_TOPIC = "Navigation";
+const HELP = {
+    topics: {
+        Navigation:`
+### all of these dont cycle. You wont wrap to first child if you keep going down. ###
+ArrowUp : Above (any level)
+ArrowUp + Shift : Above (same level)
+ArrowDown : Below  (any level)
+ArrowDown + Shift : Above (same level)
+ArrowLeft : Select parent
+ArrowRight : Select parent's sibling below
+Tab : Below  (any level)
+Tab + Shift: Above  (any level)
+
+Escape (bock selection mode): Unselect block
+Escape (text edit mode): Go to block selection mode
+
+Enter (block selection mode):  Edit text  (go to text edit mode)
+
+Delete : delete block
+        `.trim(),
+    } as Record<HELP_TOPIC,string>,
+    // locations (and descriptions) in code to where you can find implementation of mentioned feature/topic
+    codeHints:{} as { [topic in HELP_TOPIC ]?: HELP_CodeHint[] },
+    logCodeHint(topic:HELP_TOPIC, description:string){
+        function getCodeLocation(){
+            return (new Error()).stack!.split("\n").reverse().slice(2);
+            // const e = new Error();
+            // const regex = /\((.*):(\d+):(\d+)\)$/
+            // const match = regex.exec(e.stack!.split("\n")[2]);
+            // return {
+            //     filepath: match[1],
+            //     line: match[2],
+            //     column: match[3]
+            // };
+        }
+        if(!(topic in this.topics))
+            throw Error("Unknown topic: "+topic);
+        if(this.codeHints[topic] && this.codeHints[topic].some(ch=>(ch.desc==description))){
+            //code hint is already present.
+            return;
+        }
+        
+        ( // array of codeHints for topic
+            (topic in this.codeHints) ? this.codeHints[topic]!  //get existing 
+            : (this.codeHints[topic] = [])   // create new
+        ).push(  // push codeHint object
+            {desc:description,sourceLocation:getCodeLocation()}
+        );
+        
+    }
+}
+
+
+
+//######################
+// File: client/0Preferences.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0Preferences.ts
+//######################
+
 // class PreferencesClass {
 //     this.pageView_maxWidth :number;
 // };
 // RegClass(PreferencesClass);
+
+
+
+
+
+//######################
+// File: client/0Project.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0Project.ts
+//######################
 
 class ProjectClass {
     running_change_hash: string;
@@ -543,6 +529,14 @@ class ProjectClass {
     
 }
 RegClass(ProjectClass);
+
+
+
+//######################
+// File: client/0Searcher.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0Searcher.ts
+//######################
+
 
 declare var LEEJS : any;
 
@@ -672,6 +666,81 @@ class SearchStatistics{
     }
 }
 RegClass(SearchStatistics);
+
+
+
+
+//######################
+// File: client/000WebSock.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/000WebSock.ts
+//######################
+
+
+type ServerMsg = {n:string,d?:any,cb?:Function}; //n=name
+var Server = {
+    __WebSock : new WebSocket("ws://localhost:9020"),
+    __SockOpen : false,
+/*
+new Promise((resolve, reject) => {
+    WebSock.onopen(()=>resolve());
+});*/
+
+    __MsgQueue : [] as {n:string,d?:any,cb:Function}[], // 
+// let msgId = 0;
+// msg: {text:null,cb:null}         //
+// msg: {promise:true, text:null}   //promisify automatically
+    sendMsg(msg:ServerMsg){
+        // msgId++;
+        // msg.id = msgId;
+
+        let promise:any = null;
+        if(msg.cb === undefined)
+            promise = new Promise((resolve,reject)=>{
+                msg.cb = resolve; 
+            });
+
+        this.__MsgQueue.push(msg as any);
+        
+        if(this.__SockOpen)
+            this.__WebSock.send(JSON_Serialize({n:msg.n,d:msg.d})!);
+
+        if(promise!==null) return promise;
+    }
+};
+
+Server.__WebSock.onopen = (event) => {
+    Server.__SockOpen = true;
+    for(let i = 0; i < Server.__MsgQueue.length; i++) //send unsent ones
+        Server.__WebSock.send(JSON_Serialize({n:Server.__MsgQueue[i].n,d:Server.__MsgQueue[i].d})!);
+        
+
+    console.log("Open");
+    // WebSock.send("Here's some text that the server is urgently awaiting!");
+};
+
+WARN("Da ne radim .shift nego attachujem ID na sent message i uklonim appropriate ID.")
+Server.__WebSock.onmessage = (event) => {
+    let m = Server.__MsgQueue.shift()!;
+    let dataTxt = event.data as string;
+    console.log("websock recv:",dataTxt);
+    let data;
+    // if(dataTxt.startsWith("error")){
+    //     data = new Error(JSON_Deserialize(dataTxt.substring("error".length)));
+    // }else{
+        data = JSON_Deserialize(dataTxt);
+    // }
+    m.cb(data);
+    // console.log(event.data);
+};
+
+// WebSock.send("Here's some text that the server is urgently awaiting!");
+
+
+
+//######################
+// File: client/1BlkFn_server.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/1BlkFn_server.ts
+//######################
 
 //let $CL = typeof($IS_CLIENT$)!==undefined; // true for client, false on server
 /*
@@ -837,6 +906,16 @@ const BlkFn = {
     },
 
 }
+
+
+
+
+
+//######################
+// File: client/1client.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/1client.ts
+//######################
+
 
 var PROJECT = new ProjectClass();
 var SEARCH_STATISTICS = new SearchStatistics();
@@ -1009,16 +1088,24 @@ async function loadTag(blockId:Id,depth:number) {
     }  
 }
 
+
+
+//######################
+// File: client/2Blocks.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/2Blocks.ts
+//######################
+
+
+
 class Block{
     static _serializable_default = {text:"",children:[],tags:[],attribs:{},refCount:1,collapsed:false};
 
     id:Id;
     refCount:number;
     
-    pageTitle?:string;  //if has title then its a page!
+    pageTitle?:string;
     text:string;
 
-    //usually-empty
     children:Id[];
     tags:Id[];
     attribs:objectA;
@@ -1037,7 +1124,6 @@ class Block{
     DIRTY(){this.validate();DIRTY.mark("_BLOCKS",this.id);}
     DIRTY_deleted(){DIRTY.mark("_BLOCKS",this.id,true);}
     static DIRTY_deletedS(id:Id){DIRTY.mark("_BLOCKS",id,true);}
-
     validate(){} // nothing to validate. Maybe pageTitle cant be set if Block isnt in PAGES ?
 
     static async new(text="",  waitServerSave=true):Promise<Block>{
@@ -1061,6 +1147,7 @@ class Block{
         return b;
     }
 
+
     async makeVisual(parentElement?:HTMLElement, maxUncollapseDepth=999){
         let bv = (new Block_Visual(this, parentElement, this.collapsed)); // ignore collapsed since we will call updateAll anyways.
         await bv.updateAll(maxUncollapseDepth);
@@ -1070,12 +1157,21 @@ class Block{
 };
 RegClass(Block);
 
+
+
+
+//######################
+// File: client/3Tag.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/3Tag.ts
+//######################
+
+
 class Tag{ 
     static _serializable_default = {attribs:{},parentTagId:"",childrenTags:[]};
+    id:Id;
     name : string | null; // null ako preuzima ime od rootBlock.
     rootBlock? : Id; //ako je tag baziran na bloku
 
-    id:Id;
     parentTagId:Id;
     childrenTags:Id[];
     blocks:Id[];
@@ -1135,58 +1231,55 @@ class Tag{
 }
 RegClass(Tag);
 
-setTimeout((async function InitialOpen(){ //ask user to open some page (or make a page if none exist)
-    await LoadInitial();
 
-    autosaveInterval = setInterval(()=>{ //autosave timer
-        SaveAll();
-    },8000);
 
-    if(Object.keys(PAGES).length==0){
-        let pageName = prompt("No pages exist. Enter a new page name:");// || "";
-        if(pageName == null){
-            window.location.reload();
-            return;
-        }
-        let p = await Block.newPage(pageName);
-        await view.openPage(p.id);
-    }else{
-        let pageName = prompt("No page open. Enter page name (must be exact):");// || "";
-        let srch;
-
-        //[TODO] use searcher, not this prompt.
-        if(pageName == null || (srch=(await BlkFn.SearchPages(pageName,'includes'))).length < 1){
-            // console.error(srch);
-            window.location.reload();
-            return;
-        }
-
-        await view.openPage(srch[0]);
-    }
-}),1);
+//######################
+// File: client/3View/0Window.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/3View/0Window.ts
+//######################
 
 type WindowType = 'view'|'preferences'|'file-preview';
 
 class Window_Tab {
     rootWindow : Window ;
     contentsWindow : Window ;
+
+    constructor(
+        rootWindow : Window ,
+        contentsWindow : Window){
+            this.rootWindow = rootWindow;
+            this.contentsWindow = contentsWindow;
+        }
 }
 class Window {
     name: string;
     tabs: Window_Tab[];
 
+    constructor(name:string){
+        this.name = name;
+        this.tabs = [];
+    }
+
     html(){
         LEEJS.div( {class:"window"},
             LEEJS.div({class:"header"}),
-            LEEJS.div({class:"body"}  // is flow , so tabs can be vertical or horizontal.
+            LEEJS.div({class:"body"},  // is flow , so tabs can be vertical or horizontal.
                 LEEJS.div({class:"tabs"}),
                 LEEJS.div({class:"contents"}),
             ),
         );
     }
-}interface IView {
+}
+
+//######################
+// File: client/3View/1View.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/3View/1View.ts
+//######################
+
+interface IView {
 
 };
+
 
 async function selectBlock(b:Block_Visual|null,editText:boolean|null=null){
     // if(selected_block==b && editText===inTextEditMode) return;
@@ -1244,7 +1337,14 @@ function FocusElement(el:HTMLElement){
     el.focus();
 
     
-}/*
+}
+
+//######################
+// File: client/3View/Logseq/3Page_Visual.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/3View/Logseq/3Page_Visual.ts
+//######################
+
+/*
 User is viewing a single page.
 */
 
@@ -1364,7 +1464,15 @@ class Page_Visual{
         this.children.forEach(c=>updateBlockView(c));
         */
     }
-};/// <reference lib="dom" />
+};
+
+//######################
+// File: client/3View/Logseq/4View.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/3View/Logseq/4View.ts
+//######################
+
+/// <reference lib="dom" />
+
 
 //import {b} from "./BLOCKS.ts";
 declare var TinyMDE : any;
@@ -1375,6 +1483,7 @@ let view :Page_Visual = new Page_Visual();;
 
 let selected_block :Block_Visual|null = null;
 let inTextEditMode = false;
+
 
 const el_to_BlockVis = {_: new WeakMap<HTMLElement,Block_Visual>(),
     get(key:HTMLElement , allowNull = false){
@@ -1460,6 +1569,7 @@ function updateSelectionVisual(){
     `;
 }
 
+
 /**
  * If page has 0 blocks, make one automatically.
  * we dont want pages without blocks.
@@ -1470,6 +1580,7 @@ async function CheckAndHandle_PageNoBlocks(){
     if(p.children.length>0)return;
     NewBlockInside(null);
 }
+
 
 // LEEJS.shared()("#pageView"); //not really needed
 /*
@@ -1603,6 +1714,7 @@ function ShiftFocus(bv:Block_Visual, shiftFocus:number /*SHIFT_FOCUS*/, skipColl
             //repeat.
         }
     }
+
 
     //if skipCollapsed, then it wont go into children of collapsed blocks (not visible).
     let focusElement = null as Block_Visual|null;
@@ -1761,10 +1873,20 @@ STATIC.blocks.addEventListener('keydown',async (e:KeyboardEvent)=>{
     // console.log("BLOCKS:",e);
 });
 
+
+
+
+//######################
+// File: client/3View/Logseq/5Blocks_Visual.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/3View/Logseq/5Blocks_Visual.ts
+//######################
+
 /// <reference lib="dom" />
+
 
 declare var TinyMDE : any;
 declare var LEEJS : any;
+
 
 class Block_Visual{
     blockId:Id;
@@ -1778,6 +1900,7 @@ class Block_Visual{
     childrenHolderEl:HTMLElement;
 
     finished:boolean; //was it fully rendered or no (just constructed (false) or renderAll called also (true))
+
 
     constructor(b:Block,parentElement?:HTMLElement , collapsed = true){
         this.blockId = b.id;
@@ -2031,3 +2154,43 @@ class Block_Visual{
         this.updateStyle();
     }
 }
+
+
+//######################
+// File: client/init.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/init.ts
+//######################
+
+
+setTimeout((async function InitialOpen(){ //ask user to open some page (or make a page if none exist)
+    await LoadInitial();
+
+    autosaveInterval = setInterval(()=>{ //autosave timer 
+        SaveAll();
+    },8000);
+
+    if(Object.keys(PAGES).length==0){
+        let pageName = prompt("No pages exist. Enter a new page name:");// || "";
+        if(pageName == null){
+            window.location.reload();
+            return;
+        }
+        let p = await Block.newPage(pageName);
+        await view.openPage(p.id);
+    }else{
+        let pageName = prompt("No page open. Enter page name (must be exact):");// || "";
+        let srch;
+
+        //[TODO] use searcher, not this prompt.
+        if(pageName == null || (srch=(await BlkFn.SearchPages(pageName,'includes'))).length < 1){
+            // console.error(srch);
+            window.location.reload();
+            return;
+        }
+
+        await view.openPage(srch[0]);
+    }
+}),1);
+
+
+
