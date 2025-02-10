@@ -18,13 +18,22 @@ function RegClass(_class:any){ /*Serialize class.*/
     __IdToClass[id] = _class; //register class name to class object
     return id;
 }
+RegClass(Error);
 class Unknown_SerializeClass{}
+// RegClass(Unknown_SerializeClass);
 function SerializeClass(originalObj:any,_class?:any){ //obj is of some class
     let cls = _class ?? Object.getPrototypeOf(originalObj).constructor;
-    console.log(cls);
-    if(cls == Object) return '';
-    let id = _class.name;
-    if(__IdToClass[id] === undefined) throw new Error("Class not registered for serialization: "+id); 
+    // console.log("___SerializeClass ",cls,originalObj instanceof Error);
+    if(originalObj instanceof Error) cls = Error;
+    // console.log(cls);
+    if(cls == Object || (originalObj["$$C"])) return '';
+    let id = cls.name;
+    if(__IdToClass[id] === undefined){
+        // cls = Unknown_SerializeClass;
+        // id = cls.name;
+
+        throw new Error("Class not registered for serialization: "+id); 
+    }
     // let idx = __classToId.get(cls);
     // if(typeof idx != null) throw new Error("Class not registered for serialization:"+cls.name);
     return `"$$C":"${id}"`;
@@ -34,6 +43,12 @@ function SerializeClass(originalObj:any,_class?:any){ //obj is of some class
 // function DeserializeClass(scaffoldObj){ //obj is of no class, its an object. but it has a .__$class$__ property
 // }
 
+function ApplyClass(obj:any,_class:any){
+    if(_class.prototype) // is function not class.
+        Object.setPrototypeOf(obj,_class.prototype);
+    else Object.setPrototypeOf(obj,_class);
+    return obj;
+}
 function EscapeStr(str:string){
     let s = "";
     for(let i=0,_il=str.length;i<_il;i++ ){
@@ -55,7 +70,7 @@ function EscapeStr(str:string){
 }
 
 function JSON_Serialize(obj:any){//,  key?:string,parent?:any){
-    console.log("serializing:",obj);
+    // console.log("serializing:",obj);
     if(obj === null) return "null";
     else if(obj === undefined) return null;  //skip
     //return "null";
@@ -71,20 +86,31 @@ function JSON_Serialize(obj:any){//,  key?:string,parent?:any){
         s += "]";
         return s;
     }else if(typeof obj == 'object') {
-        console.log("SERIALIZING OBJECT:",obj);
+        // console.log("SERIALIZING OBJECT:",obj);
         if(obj.__serialize__) obj = obj.__serialize__();
-        console.log("SERIALIZING OBJECT2:",obj);
+        // console.log("SERIALIZING OBJECT2:",obj);
         let _class = Object.getPrototypeOf(obj).constructor;
-        console.log("CLASS:",_class,_class.name);
+        // console.log("CLASS:",_class,_class.name);
         let defaults = _class._serializable_default;
-        console.log("DEFAULTS:",defaults);
+        // console.log("DEFAULTS:",defaults);
         // if(obj.serialize_fn) return obj.serialize_fn();
         let classId = SerializeClass(obj,_class); 
         let s = `{${classId}`;
         let k = Object.getOwnPropertyNames(obj);
         let insertComma = (classId!=''); //was class atr inserted?
         for(let i=0,l=k.length;i<l;i++){
-            if(defaults && defaults[k[i]] == obj[k[i]]) continue; //skip this attribute
+            if(defaults){
+                const d = defaults[k[i]];
+                if(d!==undefined){
+                    const o = obj[k[i]];
+                    if(d===o) continue;
+                    if(Array.isArray(d)){
+                        if(Array.isArray(o) && d.length==0 && o.length == 0) continue;
+                    }else if(isEmptyObject(d)){
+                        if(isEmptyObject(o)) continue;
+                    }else if(JSON.stringify(d)==JSON.stringify(o)) continue;
+                }
+            }; //skip this attribute
             let ser = JSON_Serialize(obj[k[i]]);
             if(ser === null) continue; //skip.
 
@@ -101,12 +127,12 @@ function JSON_Serialize(obj:any){//,  key?:string,parent?:any){
     return JSON.stringify(obj);
 }
 function __Deserialize(o:objectA ,allowUnknownClasses=false):any{
-    console.log("deserializing:",o);
+    // console.log("deserializing:",o);
     if(o === null) return null;
     if(Array.isArray(o))
         return o.map((e)=>__Deserialize(e));
     if(typeof o != 'object'){
-        console.log("Primitive:",o);
+        // console.log("Primitive:",o);
         return o; //assuming its primitive.
         
     } 
@@ -116,20 +142,21 @@ function __Deserialize(o:objectA ,allowUnknownClasses=false):any{
     let defaults:any = {};
     if(classId !== undefined){
         _class = __IdToClass[classId];
-        delete o.$$C;
         if(_class == null){
             if(allowUnknownClasses)
                 _class = Unknown_SerializeClass.prototype;
             else
                 throw new Error("Class not recognised:",classId);
+        }else{
+            delete o.$$C;  // we know the class, can remove.
         }
-        Object.setPrototypeOf(o,_class); //applies in-place to object
+        ApplyClass(o,_class); //applies in-place to object
         defaults = _class._serializable_default ?? {};
         
     }
     // end Deserialize class
 
-    console.log("Deserializing object:",o,"defaults:",defaults,"class:",_class);
+    // console.log("Deserializing object:",o,"defaults:",defaults,"class:",_class);
 
     let keys = Object.getOwnPropertyNames(o);
     for(let k=0,kl=keys.length;k<kl;k++){
@@ -151,7 +178,7 @@ function __Deserialize(o:objectA ,allowUnknownClasses=false):any{
     }
 
     if(_class && _class.__deserialize__) o = _class.__deserialize__(o);
-    console.log("returning deserialized",o);
+    // console.log("returning deserialized",o);
 
     // if(o.deserialize_fn) o.deserialize_fn();
     return o;

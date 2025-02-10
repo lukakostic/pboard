@@ -1,7 +1,11 @@
 
-setTimeout(
-(async function InitialOpen(){ //ask user to open some page (or make a page if none exist)
+setTimeout((async function InitialOpen(){ //ask user to open some page (or make a page if none exist)
     await LoadInitial();
+
+    autosaveInterval = setInterval(()=>{ //autosave timer
+        SaveAll();
+    },8000);
+
     if(Object.keys(PAGES).length==0){
         let pageName = prompt("No pages exist. Enter a new page name:");// || "";
         if(pageName == null){
@@ -15,12 +19,13 @@ setTimeout(
         let srch;
 
         //[TODO] use searcher, not this prompt.
-        if(pageName == null || (srch=await BlkFn.SearchPages(pageName,'includes')).length < 1){
+        if(pageName == null || (srch=(await BlkFn.SearchPages(pageName,'includes'))).length < 1){
+            // console.error(srch);
             window.location.reload();
             return;
         }
 
         await view.openPage(srch[0]);
     }
-}),
-1);
+}),1);
+

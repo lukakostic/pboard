@@ -5,15 +5,13 @@ TCMsg = type of client request
 TSMsg = type of server response
 CMsg = send client -> server
 **************/
-/** */
-
 const _MakeMsg = <Req,Resp> (msg_code:string) => 
     (async (d:Req) : Promise<Resp> => 
-        (await Server.sendMsg({n:msg_code,d})) as Resp  );
+        ((await Server.sendMsg({n:msg_code,d})) as Resp)  );
 
 type TCMsg_saveAll__DataOrDeleted = {path:[string,Id|undefined]} & ({data:string} | {deleted:true});
 const Msg_saveAll = 'saveAll';
-type TCMsg_saveAll = {hash:string,data:TCMsg_saveAll__DataOrDeleted[]};
+type TCMsg_saveAll = {hash:string,newHash:string,data:TCMsg_saveAll__DataOrDeleted[]};
 type TSMsg_saveAll = Error|true;
 const CMsg_saveAll = _MakeMsg<TCMsg_saveAll,TSMsg_saveAll>(Msg_saveAll);
 
@@ -43,3 +41,9 @@ const Msg_loadTag = 'loadTag';
 type TCMsg_loadTag = {id:Id,depth:number};
 type TSMsg_loadTag = Error|{[index:Id]:string};//JSONstr<Tag>};
 const CMsg_loadTag = _MakeMsg<TCMsg_loadTag,TSMsg_loadTag>(Msg_loadTag);
+
+const Msg_backup = 'backup';
+type TCMsg_backup = null;
+type TSMsg_backup = Error|true;
+const CMsg_backup = _MakeMsg<TCMsg_backup,TSMsg_backup>(Msg_backup);
+

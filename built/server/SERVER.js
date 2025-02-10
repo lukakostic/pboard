@@ -30,6 +30,10 @@ function castIsnt(obj, ...isnt) {
     }
     return s;
 }
+function isEmptyObject(o) {
+    for(let i in o)return false;
+    return true;
+}
 function filterNullMap(mapObj) {
     const m = {};
     for(let k in mapObj){
@@ -37,6 +41,14 @@ function filterNullMap(mapObj) {
         if (v !== null) m[k] = mapObj[k];
     }
     return m;
+}
+function assert_non_null(thing, msg = "", actuallyCheck1_OrReturn0 = true) {
+    if (actuallyCheck1_OrReturn0 && !thing) {
+        msg = `Assert fail: Unexpected null${msg ? " for " + msg : ''}`;
+        console.error(msg);
+        throw Error(msg);
+    }
+    return thing;
 }
 // let __SerializableClasses = [Block];
 // let __classToId = new WeakMap<any,string>();
@@ -55,14 +67,22 @@ let __IdToClass = {};
     __IdToClass[id] = _class; //register class name to class object
     return id;
 }
+RegClass(Error);
 class Unknown_SerializeClass {
 }
+// RegClass(Unknown_SerializeClass);
 function SerializeClass(originalObj, _class) {
     let cls = _class ?? Object.getPrototypeOf(originalObj).constructor;
-    console.log(cls);
-    if (cls == Object) return '';
-    let id = _class.name;
-    if (__IdToClass[id] === undefined) throw new Error("Class not registered for serialization: " + id);
+    // console.log("___SerializeClass ",cls,originalObj instanceof Error);
+    if (originalObj instanceof Error) cls = Error;
+    // console.log(cls);
+    if (cls == Object || originalObj["$$C"]) return '';
+    let id = cls.name;
+    if (__IdToClass[id] === undefined) {
+        // cls = Unknown_SerializeClass;
+        // id = cls.name;
+        throw new Error("Class not registered for serialization: " + id);
+    }
     // let idx = __classToId.get(cls);
     // if(typeof idx != null) throw new Error("Class not registered for serialization:"+cls.name);
     return `"$$C":"${id}"`;
@@ -71,6 +91,11 @@ function SerializeClass(originalObj, _class) {
 }
 // function DeserializeClass(scaffoldObj){ //obj is of no class, its an object. but it has a .__$class$__ property
 // }
+function ApplyClass(obj, _class) {
+    if (_class.prototype) Object.setPrototypeOf(obj, _class.prototype);
+    else Object.setPrototypeOf(obj, _class);
+    return obj;
+}
 function EscapeStr(str) {
     let s = "";
     for(let i = 0, _il = str.length; i < _il; i++){
@@ -91,7 +116,7 @@ function EscapeStr(str) {
     return s;
 }
 function JSON_Serialize(obj) {
-    console.log("serializing:", obj);
+    // console.log("serializing:",obj);
     if (obj === null) return "null";
     else if (obj === undefined) return null; //skip
     else if (Array.isArray(obj)) {
@@ -104,20 +129,32 @@ function JSON_Serialize(obj) {
         s += "]";
         return s;
     } else if (typeof obj == 'object') {
-        console.log("SERIALIZING OBJECT:", obj);
+        // console.log("SERIALIZING OBJECT:",obj);
         if (obj.__serialize__) obj = obj.__serialize__();
-        console.log("SERIALIZING OBJECT2:", obj);
+        // console.log("SERIALIZING OBJECT2:",obj);
         let _class = Object.getPrototypeOf(obj).constructor;
-        console.log("CLASS:", _class, _class.name);
+        // console.log("CLASS:",_class,_class.name);
         let defaults = _class._serializable_default;
-        console.log("DEFAULTS:", defaults);
+        // console.log("DEFAULTS:",defaults);
         // if(obj.serialize_fn) return obj.serialize_fn();
         let classId = SerializeClass(obj, _class);
         let s = `{${classId}`;
         let k = Object.getOwnPropertyNames(obj);
         let insertComma = classId != ''; //was class atr inserted?
         for(let i = 0, l = k.length; i < l; i++){
-            if (defaults && defaults[k[i]] == obj[k[i]]) continue; //skip this attribute
+            if (defaults) {
+                const d = defaults[k[i]];
+                if (d !== undefined) {
+                    const o = obj[k[i]];
+                    if (d === o) continue;
+                    if (Array.isArray(d)) {
+                        if (Array.isArray(o) && d.length == 0 && o.length == 0) continue;
+                    } else if (isEmptyObject(d)) {
+                        if (isEmptyObject(o)) continue;
+                    } else if (JSON.stringify(d) == JSON.stringify(o)) continue;
+                }
+            }
+            ; //skip this attribute
             let ser = JSON_Serialize(obj[k[i]]);
             if (ser === null) continue; //skip.
             if (insertComma) s += ',';
@@ -133,11 +170,11 @@ function JSON_Serialize(obj) {
     return JSON.stringify(obj);
 }
 function __Deserialize(o, allowUnknownClasses = false) {
-    console.log("deserializing:", o);
+    // console.log("deserializing:",o);
     if (o === null) return null;
     if (Array.isArray(o)) return o.map((e)=>__Deserialize(e));
     if (typeof o != 'object') {
-        console.log("Primitive:", o);
+        // console.log("Primitive:",o);
         return o; //assuming its primitive.
     }
     // DeserializeClass(o);
@@ -146,16 +183,17 @@ function __Deserialize(o, allowUnknownClasses = false) {
     let defaults = {};
     if (classId !== undefined) {
         _class = __IdToClass[classId];
-        delete o.$$C;
         if (_class == null) {
             if (allowUnknownClasses) _class = Unknown_SerializeClass.prototype;
             else throw new Error("Class not recognised:", classId);
+        } else {
+            delete o.$$C; // we know the class, can remove.
         }
-        Object.setPrototypeOf(o, _class); //applies in-place to object
+        ApplyClass(o, _class); //applies in-place to object
         defaults = _class._serializable_default ?? {};
     }
     // end Deserialize class
-    console.log("Deserializing object:", o, "defaults:", defaults, "class:", _class);
+    // console.log("Deserializing object:",o,"defaults:",defaults,"class:",_class);
     let keys = Object.getOwnPropertyNames(o);
     for(let k = 0, kl = keys.length; k < kl; k++){
         o[keys[k]] = __Deserialize(o[keys[k]]);
@@ -174,7 +212,7 @@ function __Deserialize(o, allowUnknownClasses = false) {
         }
     }
     if (_class && _class.__deserialize__) o = _class.__deserialize__(o);
-    console.log("returning deserialized", o);
+    // console.log("returning deserialized",o);
     // if(o.deserialize_fn) o.deserialize_fn();
     return o;
 }
@@ -193,7 +231,7 @@ Msg = code of message
 TCMsg = type of client request
 TSMsg = type of server response
 CMsg = send client -> server
-**************/ /** */ const _MakeMsg = (msg_code)=>async (d)=>await Server.sendMsg({
+**************/ const _MakeMsg = (msg_code)=>async (d)=>await Server.sendMsg({
             n: msg_code,
             d
         });
@@ -207,13 +245,15 @@ const Msg_loadBlock = 'loadBlock';
 const CMsg_loadBlock = _MakeMsg(Msg_loadBlock);
 const Msg_loadTag = 'loadTag';
 const CMsg_loadTag = _MakeMsg(Msg_loadTag);
+const Msg_backup = 'backup';
+const CMsg_backup = _MakeMsg(Msg_backup);
 // import { serve } from "https://deno.land/std@0.177.0/http/mod.ts";
 // import { serveDirWithTs } from "https://deno.land/x/ts_serve@v1.4.6/mod.ts";
 import { serveDirWithTs } from "jsr:@ayame113/ts-serve";
 //https://github.com/ayame113/ts-serve
 import * as fs from "jsr:@std/fs";
 //declare var Deno : any;
-const FILESPATH = `./FILES`;
+const FILESPATH = `../FILES`; // we are in built/   so go up once.
 const FILE = {
     PROJECT: `${FILESPATH}/PROJECT`,
     SEARCH_STATISTICS: `${FILESPATH}/SEARCH_STATISTICS`,
@@ -228,6 +268,15 @@ try {
     let PROJECT = JSON_Deserialize(readFile(FILE.PROJECT), true);
     running_change_hash = PROJECT.running_change_hash;
 } catch (e) {}
+const backup_cmd = ()=>`cd ${FILESPATH} && git add . && git commit -m "${new Date().toLocaleString()}"`;
+function backup() {
+    new Deno.Command('bash', {
+        args: [
+            "-c",
+            backup_cmd()
+        ]
+    }).spawn();
+}
 Deno.serve({
     port: 9020
 }, async function fn(req) {
@@ -290,7 +339,7 @@ Deno.serve({
             let r = js.map((o)=>handleJson(o));
             console.log(r);
             if (r instanceof Error) {
-                socket.send("error" + JSON_Serialize(r));
+                socket.send(JSON_Serialize(r));
                 console.error(r);
             } else {
                 for(let i = 0; i < r.length; i++){
@@ -310,8 +359,8 @@ Deno.serve({
     function handleJson(json) {
         const handlers = {
             [Msg_saveAll]: (r)=>{
-                const { hash, data } = r;
-                if (hash != running_change_hash) return Error("RCH missmatch.");
+                const { hash, newHash, data } = r;
+                if (hash != running_change_hash) return Error("RCH missmatch: server: " + running_change_hash + " client: " + hash + " (clients new hash: " + newHash + " )");
                 // TODO("save all changes to disk.");
                 for(let i = 0; i < data.length; i++){
                     let p = data[i].path;
@@ -320,20 +369,21 @@ Deno.serve({
                     let hasData = "data" in data[i];
                     let d = data[i].data;
                     if (p[0] == "PROJECT") {
-                        if (p[1] !== undefined || !hasData) throw Error("Unexpected for PROJECT: " + p[1] + " , " + hasData);
+                        if (p[1] != null || !hasData) throw Error("Unexpected for PROJECT: " + p[1] + " , " + hasData);
                         writeFile(FILE.PROJECT, d);
                     } else if (p[0] == "SEARCH_STATISTICS") {
-                        if (p[1] !== undefined || !hasData) throw Error("Unexpected for SEARCH_STATISTICS: " + p[1] + " , " + hasData);
+                        if (p[1] != null || !hasData) throw Error("Unexpected for SEARCH_STATISTICS: " + p[1] + " , " + hasData);
                         writeFile(FILE.SEARCH_STATISTICS, d);
                     } else if (p[0] == "PAGES") {
+                        if (p[1] != null || !hasData) throw Error("Unexpected for PAGES: " + p[1] + " , " + hasData);
                         writeFile(FILE.PAGES, d);
                     } else if (p[0] == "_TAGS") {
-                        if (p[1] === undefined) throw Error("Unexpected TAGS: " + p[1] + " , " + hasData);
+                        if (p[1] == null) throw Error("Unexpected TAGS: " + p[1] + " , " + hasData);
                         const pth = FILE.TAGS(p[1]);
                         if (hasData) writeFile(pth, d);
                         else deleteFile(pth);
                     } else if (p[0] == "_BLOCKS") {
-                        if (p[1] === undefined) throw Error("Unexpected BLOCKS: " + p[1] + " , " + hasData);
+                        if (p[1] == null) throw Error("Unexpected BLOCKS: " + p[1] + " , " + hasData);
                         const pth = FILE.BLOCKS(p[1]);
                         if (hasData) writeFile(pth, d);
                         else deleteFile(pth);
@@ -341,6 +391,8 @@ Deno.serve({
                         return Error("Unknown save path: " + p);
                     }
                 }
+                console.log("NNNNNNNNNEW HASH : ", newHash, "old:", running_change_hash);
+                running_change_hash = newHash;
                 return true;
             },
             [Msg_eval]: (r)=>{
@@ -349,32 +401,43 @@ Deno.serve({
                 if (ret === undefined) ret = null;
                 return ret;
             },
+            [Msg_backup]: (r)=>{
+                backup();
+                return true;
+            },
             [Msg_loadInitial]: (r)=>{
-                let ids_BLOCKS = [];
-                let ids_TAGS = [];
-                for (let f of fs.walkSync(FILE.BLOCKS_FOLDER, {
-                    maxDepth: 1 /*,exts:[".pb"]*/ ,
-                    includeDirs: false,
-                    includeFiles: true,
-                    includeSymlinks: false
-                })){
-                    ids_BLOCKS.push(f.name);
-                }
-                for (let f of fs.walkSync(FILE.TAGS_FOLDER, {
-                    maxDepth: 1 /*,exts:[".pb"]*/ ,
-                    includeDirs: false,
-                    includeFiles: true,
-                    includeSymlinks: false
-                })){
-                    ids_TAGS.push(f.name);
-                }
-                return {
-                    PROJECT: readFile(FILE.PROJECT),
-                    SEARCH_STATISTICS: readFile(FILE.SEARCH_STATISTICS),
-                    PAGES: readFile(FILE.PAGES),
-                    ids_BLOCKS,
-                    ids_TAGS
-                };
+                console.log("load initial");
+                try {
+                    let ids_BLOCKS = [];
+                    let ids_TAGS = [];
+                    for (let f of fs.walkSync(FILE.BLOCKS_FOLDER, {
+                        maxDepth: 1 /*,exts:[".pb"]*/ ,
+                        includeDirs: false,
+                        includeFiles: true,
+                        includeSymlinks: false
+                    })){
+                        ids_BLOCKS.push(f.name);
+                    }
+                    for (let f of fs.walkSync(FILE.TAGS_FOLDER, {
+                        maxDepth: 1 /*,exts:[".pb"]*/ ,
+                        includeDirs: false,
+                        includeFiles: true,
+                        includeSymlinks: false
+                    })){
+                        ids_TAGS.push(f.name);
+                    }
+                    return {
+                        PROJECT: readFile(FILE.PROJECT),
+                        SEARCH_STATISTICS: readFile(FILE.SEARCH_STATISTICS),
+                        PAGES: readFile(FILE.PAGES),
+                        ids_BLOCKS,
+                        ids_TAGS
+                    };
+                } catch (e) {
+                    console.error("Failed to load initial:");
+                    console.error(e);
+                    return false;
+                } // ako fale fajlovi. onda smo fresh install.
             },
             [Msg_loadBlock]: (r)=>{
                 return client_loadBlock(r.id, r.depth);
@@ -388,9 +451,12 @@ Deno.serve({
             let data = json.d;
             console.log("Handling:", name, data);
             if (name in handlers) {
-                return handlers[name];
+                let resp = handlers[name](data);
+                console.log("HANDLED:", name, resp);
+                return resp;
             } else return Error("Unknown function to handle: '" + name + "' : " + json);
         } catch (e) {
+            console.log("HANDLED:", json, "\n\n\n", e);
             return e;
         }
     }
@@ -419,7 +485,9 @@ function client_loadBlock(blockId, depth) {
         let block = JSON_Deserialize(blockJson, true);
         returnedBlocks[blockId] = blockJson;
         if (depth <= 0) return;
-        for(let i = 0; i < block.children.length; i++)loadBlock(block.children[i], depth - 1);
+        if (block.children) {
+            for(let i = 0; i < block.children.length; i++)loadBlock(block.children[i], depth - 1);
+        }
     }
     loadBlock(blockId, depth);
     console.log("Loading block result:", returnedBlocks);

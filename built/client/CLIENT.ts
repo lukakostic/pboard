@@ -45,6 +45,11 @@ function numToShortStr(n :number) :string{
     return s;
 }
 
+function isEmptyObject(o:any){
+    for(let i in o) return false;
+    return true;
+}
+
 function filterNullMap( mapObj :any ) :any{
     const m = {} as any;
     for(let k in mapObj){
@@ -53,6 +58,15 @@ function filterNullMap( mapObj :any ) :any{
             m[k] = mapObj[k];
     }
     return m;
+}
+
+function assert_non_null(thing:any,msg="", actuallyCheck1_OrReturn0=true){
+    if(actuallyCheck1_OrReturn0 && !thing){
+        msg = `Assert fail: Unexpected null${msg?(" for "+msg):''}`;
+        console.error(msg); 
+        throw Error(msg);
+    }
+    return thing;
 }
 // let __SerializableClasses = [Block];
 // let __classToId = new WeakMap<any,string>();
@@ -73,13 +87,22 @@ function RegClass(_class:any){ /*Serialize class.*/
     __IdToClass[id] = _class; //register class name to class object
     return id;
 }
+RegClass(Error);
 class Unknown_SerializeClass{}
+// RegClass(Unknown_SerializeClass);
 function SerializeClass(originalObj:any,_class?:any){ //obj is of some class
     let cls = _class ?? Object.getPrototypeOf(originalObj).constructor;
-    console.log(cls);
-    if(cls == Object) return '';
-    let id = _class.name;
-    if(__IdToClass[id] === undefined) throw new Error("Class not registered for serialization: "+id); 
+    // console.log("___SerializeClass ",cls,originalObj instanceof Error);
+    if(originalObj instanceof Error) cls = Error;
+    // console.log(cls);
+    if(cls == Object || (originalObj["$$C"])) return '';
+    let id = cls.name;
+    if(__IdToClass[id] === undefined){
+        // cls = Unknown_SerializeClass;
+        // id = cls.name;
+
+        throw new Error("Class not registered for serialization: "+id); 
+    }
     // let idx = __classToId.get(cls);
     // if(typeof idx != null) throw new Error("Class not registered for serialization:"+cls.name);
     return `"$$C":"${id}"`;
@@ -89,6 +112,12 @@ function SerializeClass(originalObj:any,_class?:any){ //obj is of some class
 // function DeserializeClass(scaffoldObj){ //obj is of no class, its an object. but it has a .__$class$__ property
 // }
 
+function ApplyClass(obj:any,_class:any){
+    if(_class.prototype) // is function not class.
+        Object.setPrototypeOf(obj,_class.prototype);
+    else Object.setPrototypeOf(obj,_class);
+    return obj;
+}
 function EscapeStr(str:string){
     let s = "";
     for(let i=0,_il=str.length;i<_il;i++ ){
@@ -110,7 +139,7 @@ function EscapeStr(str:string){
 }
 
 function JSON_Serialize(obj:any){//,  key?:string,parent?:any){
-    console.log("serializing:",obj);
+    // console.log("serializing:",obj);
     if(obj === null) return "null";
     else if(obj === undefined) return null;  //skip
     //return "null";
@@ -126,20 +155,31 @@ function JSON_Serialize(obj:any){//,  key?:string,parent?:any){
         s += "]";
         return s;
     }else if(typeof obj == 'object') {
-        console.log("SERIALIZING OBJECT:",obj);
+        // console.log("SERIALIZING OBJECT:",obj);
         if(obj.__serialize__) obj = obj.__serialize__();
-        console.log("SERIALIZING OBJECT2:",obj);
+        // console.log("SERIALIZING OBJECT2:",obj);
         let _class = Object.getPrototypeOf(obj).constructor;
-        console.log("CLASS:",_class,_class.name);
+        // console.log("CLASS:",_class,_class.name);
         let defaults = _class._serializable_default;
-        console.log("DEFAULTS:",defaults);
+        // console.log("DEFAULTS:",defaults);
         // if(obj.serialize_fn) return obj.serialize_fn();
         let classId = SerializeClass(obj,_class); 
         let s = `{${classId}`;
         let k = Object.getOwnPropertyNames(obj);
         let insertComma = (classId!=''); //was class atr inserted?
         for(let i=0,l=k.length;i<l;i++){
-            if(defaults && defaults[k[i]] == obj[k[i]]) continue; //skip this attribute
+            if(defaults){
+                const d = defaults[k[i]];
+                if(d!==undefined){
+                    const o = obj[k[i]];
+                    if(d===o) continue;
+                    if(Array.isArray(d)){
+                        if(Array.isArray(o) && d.length==0 && o.length == 0) continue;
+                    }else if(isEmptyObject(d)){
+                        if(isEmptyObject(o)) continue;
+                    }else if(JSON.stringify(d)==JSON.stringify(o)) continue;
+                }
+            }; //skip this attribute
             let ser = JSON_Serialize(obj[k[i]]);
             if(ser === null) continue; //skip.
 
@@ -156,12 +196,12 @@ function JSON_Serialize(obj:any){//,  key?:string,parent?:any){
     return JSON.stringify(obj);
 }
 function __Deserialize(o:objectA ,allowUnknownClasses=false):any{
-    console.log("deserializing:",o);
+    // console.log("deserializing:",o);
     if(o === null) return null;
     if(Array.isArray(o))
         return o.map((e)=>__Deserialize(e));
     if(typeof o != 'object'){
-        console.log("Primitive:",o);
+        // console.log("Primitive:",o);
         return o; //assuming its primitive.
         
     } 
@@ -171,20 +211,21 @@ function __Deserialize(o:objectA ,allowUnknownClasses=false):any{
     let defaults:any = {};
     if(classId !== undefined){
         _class = __IdToClass[classId];
-        delete o.$$C;
         if(_class == null){
             if(allowUnknownClasses)
                 _class = Unknown_SerializeClass.prototype;
             else
                 throw new Error("Class not recognised:",classId);
+        }else{
+            delete o.$$C;  // we know the class, can remove.
         }
-        Object.setPrototypeOf(o,_class); //applies in-place to object
+        ApplyClass(o,_class); //applies in-place to object
         defaults = _class._serializable_default ?? {};
         
     }
     // end Deserialize class
 
-    console.log("Deserializing object:",o,"defaults:",defaults,"class:",_class);
+    // console.log("Deserializing object:",o,"defaults:",defaults,"class:",_class);
 
     let keys = Object.getOwnPropertyNames(o);
     for(let k=0,kl=keys.length;k<kl;k++){
@@ -206,7 +247,7 @@ function __Deserialize(o:objectA ,allowUnknownClasses=false):any{
     }
 
     if(_class && _class.__deserialize__) o = _class.__deserialize__(o);
-    console.log("returning deserialized",o);
+    // console.log("returning deserialized",o);
 
     // if(o.deserialize_fn) o.deserialize_fn();
     return o;
@@ -228,15 +269,13 @@ TCMsg = type of client request
 TSMsg = type of server response
 CMsg = send client -> server
 **************/
-/** */
-
 const _MakeMsg = <Req,Resp> (msg_code:string) => 
     (async (d:Req) : Promise<Resp> => 
-        (await Server.sendMsg({n:msg_code,d})) as Resp  );
+        ((await Server.sendMsg({n:msg_code,d})) as Resp)  );
 
 type TCMsg_saveAll__DataOrDeleted = {path:[string,Id|undefined]} & ({data:string} | {deleted:true});
 const Msg_saveAll = 'saveAll';
-type TCMsg_saveAll = {hash:string,data:TCMsg_saveAll__DataOrDeleted[]};
+type TCMsg_saveAll = {hash:string,newHash:string,data:TCMsg_saveAll__DataOrDeleted[]};
 type TSMsg_saveAll = Error|true;
 const CMsg_saveAll = _MakeMsg<TCMsg_saveAll,TSMsg_saveAll>(Msg_saveAll);
 
@@ -267,6 +306,67 @@ type TCMsg_loadTag = {id:Id,depth:number};
 type TSMsg_loadTag = Error|{[index:Id]:string};//JSONstr<Tag>};
 const CMsg_loadTag = _MakeMsg<TCMsg_loadTag,TSMsg_loadTag>(Msg_loadTag);
 
+const Msg_backup = 'backup';
+type TCMsg_backup = null;
+type TSMsg_backup = Error|true;
+const CMsg_backup = _MakeMsg<TCMsg_backup,TSMsg_backup>(Msg_backup);
+
+var DEBUG = true;
+
+type HELP_CodeHint = { desc:string, sourceLocation:string[] };
+type HELP_TOPIC = "Navigation";
+const HELP = {
+    topics: {
+        Navigation:`
+### all of these dont cycle. You wont wrap to first child if you keep going down. ###
+ArrowUp : Above (any level)
+ArrowUp + Shift : Above (same level)
+ArrowDown : Below  (any level)
+ArrowDown + Shift : Above (same level)
+ArrowLeft : Select parent
+ArrowRight : Select parent's sibling below
+Tab : Below  (any level)
+Tab + Shift: Above  (any level)
+
+Escape (bock selection mode): Unselect block
+Escape (text edit mode): Go to block selection mode
+
+Enter (block selection mode):  Edit text  (go to text edit mode)
+
+Delete : delete block
+        `.trim(),
+    } as Record<HELP_TOPIC,string>,
+    // locations (and descriptions) in code to where you can find implementation of mentioned feature/topic
+    codeHints:{} as { [topic in HELP_TOPIC ]?: HELP_CodeHint[] },
+    logCodeHint(topic:HELP_TOPIC, description:string){
+        function getCodeLocation(){
+            return (new Error()).stack!.split("\n").reverse().slice(2);
+            // const e = new Error();
+            // const regex = /\((.*):(\d+):(\d+)\)$/
+            // const match = regex.exec(e.stack!.split("\n")[2]);
+            // return {
+            //     filepath: match[1],
+            //     line: match[2],
+            //     column: match[3]
+            // };
+        }
+        if(!(topic in this.topics))
+            throw Error("Unknown topic: "+topic);
+        if(this.codeHints[topic] && this.codeHints[topic].some(ch=>(ch.desc==description))){
+            //code hint is already present.
+            return;
+        }
+        
+        ( // array of codeHints for topic
+            (topic in this.codeHints) ? this.codeHints[topic]!  //get existing 
+            : (this.codeHints[topic] = [])   // create new
+        ).push(  // push codeHint object
+            {desc:description,sourceLocation:getCodeLocation()}
+        );
+        
+    }
+}
+
 type ServerMsg = {n:string,d?:any,cb?:Function}; //n=name
 var Server = {
     __WebSock : new WebSocket("ws://localhost:9020"),
@@ -275,12 +375,7 @@ var Server = {
 new Promise((resolve, reject) => {
     WebSock.onopen(()=>resolve());
 });*/
-    /*
-    MsgType:{
-        saveAll:"saveAll", //data:null
-        load:"load", //data: attrSelector[]
-        eval:"eval", //code as string
-    },*/
+
     __MsgQueue : [] as {n:string,d?:any,cb:Function}[], // 
 // let msgId = 0;
 // msg: {text:null,cb:null}         //
@@ -320,64 +415,47 @@ Server.__WebSock.onmessage = (event) => {
     let dataTxt = event.data as string;
     console.log("websock recv:",dataTxt);
     let data;
-    if(dataTxt.startsWith("error")){
-        data = new Error(JSON_Deserialize(dataTxt.substring("error".length)));
-    }else{
+    // if(dataTxt.startsWith("error")){
+    //     data = new Error(JSON_Deserialize(dataTxt.substring("error".length)));
+    // }else{
         data = JSON_Deserialize(dataTxt);
-    }
+    // }
     m.cb(data);
     // console.log(event.data);
 };
 
 // WebSock.send("Here's some text that the server is urgently awaiting!");
-type _DIRTY_Entry = [string,Id|undefined,false|undefined];
+
+type _DIRTY_Entry = [string,Id|undefined,boolean];
 var DIRTY = {
     _ : [] as _DIRTY_Entry[],
     error : null as null|Error,
 
-    mark(singleton:string,id?:any,isDeleted:false|undefined=false) :void{
+    mark(singleton:string,id?:any,isDeleted=false) :void{
         // check if user didnt make mistake in strEval string: 
         try{eval(this.evalStringResolve(singleton,id));}catch(e){throw Error("Eval cant find object "+singleton+" id "+id+". :"+e);}
-    
-        while(true){ //remove same or longer/more-specific already marked  (["BLOCKS",1] should shadow ["BLOCKS",1,2,3] as its more general)
-            
-            for(let i = 0; i<this._.length;i++){
-                if(this._[i][0] == singleton){
-                    if(id!==undefined && this._[i][1]===undefined) return; //theyre more specific than us!
-                    if((id===this._[i][1]) || (this._[i][1]!==undefined && id===undefined)){
-                        this._.splice(i,1);
-                        break;
-                    }
-                }
-            }
-            // let idx = this.findAnyMatch(singleton,id);
-            // if(idx==-1) break;
-            // if(id===undefined && this._[idx][1]!==undefined)
-            // // if(this._[idx].length>strEval.length) // we are less specific than existing, delete existing
-            //     this._.splice(idx,1);
-            // else if(this._[idx][id] === id)
-            // // else if(this._[idx].length==strEval.length && this._[idx][1] == strEval[1])
-            //     return;  // exact copy of us is already saved. quit.
-            // else return; // its actually less specific than us!! we should quit.
-        }
+        
+        const require_id = ["_BLOCKS","_TAGS"];
+        if(require_id.includes(singleton) && id===undefined) throw Error(`${singleton} requires an ID but none provided.`);
+        if(require_id.includes(singleton)==false && id!==undefined) throw Error(`${singleton} doesnt support an ID but id '${id}' was provided.`);
+
+        this._ = this._.filter(p=>!(p[0]==singleton && p[1]==id));// && (isDeleted?(p[2]==true):(p[2]!=true))));
+        //remove all which have same singleton and id.    
+        // for(let i = this._.length-1; i>=0;i--){
+        //         if(singleton == this._[i][0]){
+        //             if(id===this._[i][1])
+        //                 this._.splice(i,1);
+        //             // if(id!==undefined && this._[i][1]===undefined) return; //theyre more specific than us!
+        //             // if((id===this._[i][1]) || (this._[i][1]!==undefined && id===undefined)){
+        //             //     this._.splice(i,1);
+        //             //     break;
+        //             // }
+        //         }
+        //     }
+        
         this._.push([singleton,id,isDeleted]);
+        // console.error("Marked: ",[singleton,id,isDeleted]);
     },
-    // findAnyMatch(singleton:string,id?:any){
-    //     for(let i = 0; i<this._.length;i++){
-    //         if(this._[i][0] == singleton){
-    //             //if(this._[i][1]===undefined)
-    //                 return i;
-    //         }
-    //         // let len = this._[i].length; if(len>strEval.length) len=strEval.length;
-    //         // let matchesAll = true;
-    //         // for(let j=0;j<len;j++){
-    //         //     if(this._[i][j] != strEval[j])
-    //         //         matchesAll = false;
-    //         // }
-    //         // if(matchesAll) return i;
-    //     }
-    //     return -1;
-    // },
     evalStringResolve(singleton:string,id?:any):string{
         let finalEvalStr = singleton;
         if(id!==undefined){
@@ -387,15 +465,6 @@ var DIRTY = {
         return finalEvalStr;
     }
 };
-
-// function unmark_DIRTY(strEval:[string,...any]) :void{
-//     if(_DIRTY[strEval])
-//         delete _DIRTY[strEval];
-//}
-/*async function set(path:_AttrPath,value:any){
-    // path=AttrPath.parse(path);
-    return (await rpc(`server_set`,path,value));
-}*/
 
 /**
  * Like a normal array but it mocks pop,push,splice functions, 
@@ -417,7 +486,7 @@ class ProxyArraySetter_NO{
         }else arr = existingArray;
         let p = new ProxyArraySetter(obj,field);
         Object.assign(arr,p);
-        return Object.setPrototypeOf(arr,ProxyArraySetter.prototype) as any[];
+        return ApplyClass(arr,ProxyArraySetter) as any[];
     }
     push(...items:any){
         let r = Array.prototype.push.apply(this,items);
@@ -438,11 +507,24 @@ class ProxyArraySetter_NO{
 */
 /** same as array. */
 //declare type TProxyArraySetter_NO<T> = T[];
+
+// class PreferencesClass {
+//     this.pageView_maxWidth :number;
+// };
+// RegClass(PreferencesClass);
+
 class ProjectClass {
     running_change_hash: string;
     __runningId : number;
+    version : string;
 
     DIRTY(){DIRTY.mark("PROJECT");}
+
+    constructor(){
+        this.running_change_hash = "-";
+        this.__runningId = 1;
+        this.version = "1";
+    }
 
     genChangeHash():string{
         this.running_change_hash = numToShortStr(
@@ -459,10 +541,6 @@ class ProjectClass {
         return this.__runningId.toString();
     }
     
-    constructor(){
-        this.running_change_hash = "-";
-        this.__runningId = 1;
-    }
 }
 RegClass(ProjectClass);
 
@@ -584,16 +662,18 @@ class SearchStatistics{
         this.push_list(this.recentlySearched_Pages,[id,(await BLOCKS(id)).pageTitle!]);
     }
     async recentlySearched_Tags_push(id:Id){
-        this.push_list(this.recentlySearched_Tags,[id,(await TAGS(id)).name]);
+        this.push_list(this.recentlySearched_Tags,[id,await (await TAGS(id)).getName()]);
     }
     async recentlyVisited_Pages_push(id:Id){
         this.push_list(this.recentlyVisited_Pages,[id,(await BLOCKS(id)).pageTitle!]);
     }
     async recentlyAdded_Tags_push(id:Id){
-        this.push_list(this.recentlyAdded_Tags,[id,(await TAGS(id)).name]);
+        this.push_list(this.recentlyAdded_Tags,[id,await (await TAGS(id)).getName()]);
     }
 }
-RegClass(SearchStatistics);//let $CL = typeof($IS_CLIENT$)!==undefined; // true for client, false on server
+RegClass(SearchStatistics);
+
+//let $CL = typeof($IS_CLIENT$)!==undefined; // true for client, false on server
 /*
 let $$$CL_ret ->  call fn and return its return (do nothing)
 let $$$CL_clone -> call fn, copy function body (rename BLOCK to _BLOCK etc.)
@@ -622,57 +702,63 @@ const BlkFn = {
     //     return true;
     // },
     async RemoveTagFromBlock(blockId:Id,tagId:Id){ 
-        const t = await TAGS(tagId);
+        const t = await TAGS(tagId,0);
         t.blocks.splice(t.blocks.indexOf(blockId),1); //remove block from tag
         t.DIRTY();
-        const b = await BLOCKS(blockId);
+        const b = await BLOCKS(blockId,0);
         b.tags.splice(b.tags.indexOf(tagId),1); //remove tag from block
         b.DIRTY();
     },
     async RemoveAllTagsFromBlock(blockId:Id){  ////let $$$CL_clone;
-        const b = await BLOCKS(blockId);          ////if($CL&&!b)return;
+        const b = await BLOCKS(blockId,0);          ////if($CL&&!b)return;
         for(let i = 0; i<b.tags.length; i++){
-            const t = await TAGS(b.tags[i]);          ////if($CL&&!t)continue;
+            const t = await TAGS(b.tags[i],0);          ////if($CL&&!t)continue;
             t.blocks.splice(t.blocks.indexOf(blockId),1); //remove block from tag
             t.DIRTY();
         }
         b.tags = [];//    b.tags.splice(b.tags.indexOf(tagId),1); //remove tag from block
         b.DIRTY();
     },
+    async AddTagToBlock(blockId:Id,tagId:Id){
+        const b = await BLOCKS(blockId,0);
+        const t = await TAGS(tagId,0);
+        
+    },
     async DeleteBlockOnce(id:Id){  ////let $$$CL_diff;
-        const b = await BLOCKS(id);
-        b.DIRTY();
-        if(--(b.refCount)>0) return;// false; //not getting fully deleted
-        //deleting block.
-        for(let i = 0; i<b.children.length;i++)
-            await this.DeleteBlockOnce(b.children[i]);
-        await this.RemoveAllTagsFromBlock(id);
-        if(PAGES[id]) delete PAGES[id];
-        DIRTY.mark("PAGES",id,undefined);
-
-        // _BLOCKS[id].DIRTY_deleted();
-        delete _BLOCKS[id];
-        Block.DIRTY_deletedS(id);
-        TODO("Delete BLOCKS and PAGES on server");
-        return;// true; //got fully deleted
+        if(_BLOCKS[id]==undefined) return false;
+        const b = await BLOCKS(id,0);
+        // console.error("delete once",id,b.refCount);
+        b.refCount--;
+        
+        if(b.refCount>0){ b.DIRTY(); return false; }// false; //not getting fully deleted
+        //deleting block fully
+        if(b.refCount==0)
+            await BlkFn.DeleteBlockEverywhere(id);
+        
+        return true;// true; //got fully deleted
     },
     async DeleteBlockEverywhere(id:Id){  ////let $$$CL_diff;
-        const b = await BLOCKS(id);
+        if(_BLOCKS[id]==undefined) return;
+        const b = await BLOCKS(id,0);
         b.refCount=0;
-        for(let i = 0; i<b.children.length;i++)
-            await this.DeleteBlockOnce(b.children[i]);
+        for(let i = 0; i<b.children.length;i++){
+            // console.error("delete everywhere ",id,"child:",b.children[i],"i"+i,b.children.length);
+            if(await this.DeleteBlockOnce(b.children[i])) i--;
+        }
         await this.RemoveAllTagsFromBlock(id);
-        if(PAGES[id]) delete PAGES[id];
-        DIRTY.mark("PAGES",id,undefined);
+        if(PAGES[id]){ delete PAGES[id]; DIRTY.mark("PAGES"); }
         delete _BLOCKS[id];
         Block.DIRTY_deletedS(id);
         // Search all blocks and all tags. Remove self from children.
         
         let allBlocks = Object.keys(_BLOCKS);
         for(let i = 0; i<allBlocks.length;i++){
-            const b2 = await BLOCKS(allBlocks[i]);
-            b2.children = b2.children.filter((x:any)=>(x!=id));
-            b2.DIRTY();
+            if(_BLOCKS[allBlocks[i]]==undefined) continue;
+            const b2 = await BLOCKS(allBlocks[i],0);
+            if(b2.children.includes(id)){
+                b2.children = b2.children.filter((x:any)=>(x!=id));
+                b2.DIRTY();
+            }
             WARN("We arent modifying array in-place (for performance), caller may hold old reference");
             /*
             let oc = b2.children;
@@ -681,19 +767,19 @@ const BlkFn = {
                 oc.splice(0,oc.length,...nc);    // in-place set new array values
             }*/
         }
-        
+        /*
         let allTags = Object.keys(_TAGS);
         for(let i = 0; i<allTags.length;i++){
             const t2 = await TAGS(allTags[i]);
             t2.blocks = t2.blocks.filter((x:any)=>(x!=id));
             t2.DIRTY();
             WARN("We arent modifying array in-place (for performance), caller may hold old reference");
-        }
+        }*/
     },
     async InsertBlockChild(parent:Id, child:Id, index:number )/*:Id[]*/{  ////let $$$CL_clone;
         const p = await BLOCKS(parent);                 ////if($CL&&!p)return;
         const l = p.children;
-        if(index >= l.length){
+        if(index >= l.length || index<0){
             l.push(child);
         }else{
             l.splice(index,0,child);
@@ -703,6 +789,7 @@ const BlkFn = {
     },
     async SearchPages(title:string,mode:'exact'|'startsWith'|'includes'='exact'):Promise<Id[]>{  ////let $$$CL_ret;
         let pages = await Promise.all(Object.keys(PAGES).map(async k=>(await BLOCKS(k))));
+        // console.info("ALL BLOCKS LOADED FOR SEARCH: ",JSON.stringify(_BLOCKS));
         if(mode=='exact'){
             return pages.filter(p=>p.pageTitle == title).map(p=>p.id);
         }else if(mode=='startsWith'){
@@ -750,10 +837,11 @@ const BlkFn = {
     },
 
 }
+
 var PROJECT = new ProjectClass();
 var SEARCH_STATISTICS = new SearchStatistics();
 
-type TBLOCKSn = {[index:Id]:Block|null};
+type TBLOCKSn = {[id:Id]:Block|null};
 var _BLOCKS : TBLOCKSn = {};  // all blocks
 async function BLOCKS( idx :Id , depth :number = 1 ):Promise<Block>{
     if(_BLOCKS[idx]===null)
@@ -761,16 +849,18 @@ async function BLOCKS( idx :Id , depth :number = 1 ):Promise<Block>{
     return _BLOCKS[idx]!;
 }
 
-type TPAGES = {[index:Id]:true};
+type TPAGES = {[id:Id]:true};
 var PAGES : TPAGES = {}; //all pages
 
-type TTAGSn = {[index:Id]:Tag|null};
+type TTAGSn = {[id:Id]:Tag|null};
 var _TAGS : TTAGSn = {};  // all tags
 async function TAGS( idx :Id , depth :number = 1 ):Promise<Tag>{
     if(_TAGS[idx]===null)
         await loadTag(idx,depth);
     return _TAGS[idx]!;
 }
+
+let autosaveInterval :number|null = null;
 
 /*
 async function LoadAll(){
@@ -823,6 +913,7 @@ async function LoadInitial(){
     on demand objects for: _BLOCKS, _TAGS.
     */
     const resp = await CMsg_loadInitial(null);
+    console.log("LOAD INITIAL:",resp);
     if(resp instanceof Error)
         throw resp;
     else if(resp === false){ // server has no saved state (fresh install) 
@@ -834,26 +925,41 @@ async function LoadInitial(){
         PROJECT =  JSON_Deserialize(resp.PROJECT as any);   
     
         _BLOCKS = {};
-        for(let k in resp.ids_BLOCKS)
-            _BLOCKS[k] = null;
+        // console.log("LOAD INITIAL:",JSON.stringify(resp.ids_BLOCKS));
+        resp.ids_BLOCKS.forEach(id=>_BLOCKS[id] = null);
         _TAGS = {};
-        for(let k in resp.ids_TAGS)
-            _TAGS[k] = null;
-    
+        resp.ids_TAGS.forEach(id=>_TAGS[id] = null);
+        
+        console.log("LOAD INITIAL OVER:",PAGES,SEARCH_STATISTICS,PROJECT);
+        // console.log("LOAD INITIAL _BLOCKS:",JSON.stringify(_BLOCKS));
     }
 }
 async function SaveAll(){
     //    Server.sendMsg({n:Server.MsgType.saveAll,d:{TAGS:_TAGS,BLOCKS:_BLOCKS}});
-    if(DIRTY._.length==0 || DIRTY.error!==null) return;
+    if(DIRTY._.length==0 || DIRTY.error!==null){
+        if(DIRTY.error) throw DIRTY.error;
+        return;
+    }
         
     // send to server all dirty objects.
     // most importantly also send the ""
-    let oldChangeHash = PROJECT.running_change_hash;
-    PROJECT.genChangeHash();
+    const oldHash = PROJECT.running_change_hash;
+    if(oldHash == (new ProjectClass()).running_change_hash){ // initial save
+        SEARCH_STATISTICS.DIRTY(); 
+        PROJECT.DIRTY();
+        DIRTY.mark("PAGES");
+        // console.error("Initial save.");
+        // console.error(JSON.stringify(DIRTY._))
+    }
+
+    const newHash = PROJECT.genChangeHash();
+    
     //let packet : TMsg_saveAll_C2S["d"] = {hash:oldChangeHash,data:[]};
     let packet : TCMsg_saveAll__DataOrDeleted[] = [];
-    DIRTY._.forEach(p=>{
-        if(p[2]===undefined){ // thing was deleted.
+    for(let i = DIRTY._.length-1; i >= 0; i--){
+        const p = DIRTY._[i];
+        // console.error(p);
+        if(p[2]){ // thing was deleted.
             packet.push({path:[p[0],p[1]],deleted:true});
         }else{
             let evalStr = DIRTY.evalStringResolve(p[0],p[1]);
@@ -864,12 +970,18 @@ async function SaveAll(){
                 throw e;
             }
         }
-    });
-    const resp = await CMsg_saveAll({hash:oldChangeHash,data:packet});
+        DIRTY._.splice(i,1);
+    }
+    const resp = await CMsg_saveAll({hash:oldHash,newHash,data:packet});
     if(resp instanceof Error){
         DIRTY.error = resp;
         throw resp; // !!!!!!!!!!!!!!
     }
+}
+
+async function Backup(){
+    let r = await CMsg_backup(null);
+    throwIf(r);
 }
 
 async function loadBlock(blockId:Id,depth:number) {
@@ -881,6 +993,7 @@ async function loadBlock(blockId:Id,depth:number) {
     for(let key in newBLOCKS_partial){
         console.log("Loading block id:",key);
         _BLOCKS[key] = JSON_Deserialize( newBLOCKS_partial[key] );
+        console.info("Loaded block: ",key,_BLOCKS[key]);
     }  
 }
 async function loadTag(blockId:Id,depth:number) {
@@ -897,7 +1010,7 @@ async function loadTag(blockId:Id,depth:number) {
 }
 
 class Block{
-    static _serializable_default = {children:[],tags:[],attribs:{},refCount:1};
+    static _serializable_default = {text:"",children:[],tags:[],attribs:{},refCount:1,collapsed:false};
 
     id:Id;
     refCount:number;
@@ -909,6 +1022,7 @@ class Block{
     children:Id[];
     tags:Id[];
     attribs:objectA;
+    collapsed: boolean;
 
     constructor(){
         this.id = "";
@@ -917,36 +1031,50 @@ class Block{
         this.children = [];
         this.tags = [];
         this.attribs = {};
+        this.collapsed = false;
     }
-    DIRTY(){DIRTY.mark("_BLOCKS",this.id);}
-    DIRTY_deleted(){DIRTY.mark("_BLOCKS",this.id,undefined);}
-    static DIRTY_deletedS(id:Id){DIRTY.mark("_BLOCKS",id,undefined);}
-    static new(text=""):Block{
+    
+    DIRTY(){this.validate();DIRTY.mark("_BLOCKS",this.id);}
+    DIRTY_deleted(){DIRTY.mark("_BLOCKS",this.id,true);}
+    static DIRTY_deletedS(id:Id){DIRTY.mark("_BLOCKS",id,true);}
+
+    validate(){} // nothing to validate. Maybe pageTitle cant be set if Block isnt in PAGES ?
+
+    static async new(text="",  waitServerSave=true):Promise<Block>{
         let b = new Block();
         _BLOCKS[b.id = PROJECT.genId()] = b;
         b.text = text;
         b.DIRTY();
+        if(waitServerSave)
+            await SaveAll();
         return b;
     }
-    static newPage(title=""):Block{
+    static async newPage(title="" , waitServerSave=true):Promise<Block>{
         let b = new Block();
         _BLOCKS[b.id = PROJECT.genId()] = b;
         PAGES[b.id] = true;
+        DIRTY.mark("PAGES");
         b.pageTitle = title;
         b.DIRTY();
+        if(waitServerSave)
+            await SaveAll();
         return b;
     }
 
-    makeVisual(parentElement?:HTMLElement){
-        return (new Block_Visual(this,parentElement));
+    async makeVisual(parentElement?:HTMLElement, maxUncollapseDepth=999){
+        let bv = (new Block_Visual(this, parentElement, this.collapsed)); // ignore collapsed since we will call updateAll anyways.
+        await bv.updateAll(maxUncollapseDepth);
+        return bv;
     }
 
 };
 RegClass(Block);
 
 class Tag{ 
-    static _serializable_default = {attribs:{},parentTagId:"",childrenTags:{}};
-    name : string;
+    static _serializable_default = {attribs:{},parentTagId:"",childrenTags:[]};
+    name : string | null; // null ako preuzima ime od rootBlock.
+    rootBlock? : Id; //ako je tag baziran na bloku
+
     id:Id;
     parentTagId:Id;
     childrenTags:Id[];
@@ -961,31 +1089,162 @@ class Tag{
         this.blocks = [];
         this.attribs = {};
     }
-    DIRTY(){DIRTY.mark("_TAGS",this.id);}
-    DIRTY_deleted(){DIRTY.mark("_TAGS",this.id,undefined);}
-    static DIRTY_deletedS(id:Id){DIRTY.mark("_TAGS",id,undefined);}
-    static async new(name:string,parentTag:Id=""){
+
+    async getName(){
+        if(this.name != null)
+            return this.name;
+        if(this.rootBlock === undefined)
+            throw Error(`Tag ${this.id} has no name or rootBlock. Cant getName().`);
+        let name = (await BLOCKS(this.rootBlock!)).pageTitle;
+        if(name == null)throw Error(`Tag ${this.id} has rootBlock ${this.rootBlock} but it has null pageTitle. Cant getName().`);
+        return name;
+    }
+
+    validate(){
+        if(this.name==null)
+            assert_non_null(this.rootBlock,"Tag with null name must be based on a block.");    
+    }
+    
+    DIRTY(){this.validate();DIRTY.mark("_TAGS",this.id);}
+    DIRTY_deleted(){DIRTY.mark("_TAGS",this.id,true);}
+    static DIRTY_deletedS(id:Id){DIRTY.mark("_TAGS",id,true);}
+
+    static async new(name:string,parentTagId:Id="" ,  waitServerSave=true) :Promise<Tag>{
         let t = new Tag();
         let parent :Tag|null = null;
         
-        if(parentTag!=""){
-            parent = await TAGS(parentTag);
-            if(!parent) throw new Error(`Invalid parent: #${parentTag} not found`);
+        if(parentTagId!=""){
+            parent = await TAGS(parentTagId);
+            if(!parent) throw new Error(`Invalid parent: #${parentTagId} not found`);
         }
         
         _TAGS[t.id = PROJECT.genId()] = t;
         t.name = name;
 
-        if(parentTag!=""){ 
-            t.parentTagId = parentTag;
+        if(parentTagId!=""){ 
+            t.parentTagId = parentTagId;
             parent!.childrenTags.push(t.id);    
         }
 
         t.DIRTY();
+
+        if(waitServerSave)
+            await SaveAll();
         return t;
     }
 }
-RegClass(Tag);/*
+RegClass(Tag);
+
+setTimeout((async function InitialOpen(){ //ask user to open some page (or make a page if none exist)
+    await LoadInitial();
+
+    autosaveInterval = setInterval(()=>{ //autosave timer
+        SaveAll();
+    },8000);
+
+    if(Object.keys(PAGES).length==0){
+        let pageName = prompt("No pages exist. Enter a new page name:");// || "";
+        if(pageName == null){
+            window.location.reload();
+            return;
+        }
+        let p = await Block.newPage(pageName);
+        await view.openPage(p.id);
+    }else{
+        let pageName = prompt("No page open. Enter page name (must be exact):");// || "";
+        let srch;
+
+        //[TODO] use searcher, not this prompt.
+        if(pageName == null || (srch=(await BlkFn.SearchPages(pageName,'includes'))).length < 1){
+            // console.error(srch);
+            window.location.reload();
+            return;
+        }
+
+        await view.openPage(srch[0]);
+    }
+}),1);
+
+type WindowType = 'view'|'preferences'|'file-preview';
+
+class Window_Tab {
+    rootWindow : Window ;
+    contentsWindow : Window ;
+}
+class Window {
+    name: string;
+    tabs: Window_Tab[];
+
+    html(){
+        LEEJS.div( {class:"window"},
+            LEEJS.div({class:"header"}),
+            LEEJS.div({class:"body"}  // is flow , so tabs can be vertical or horizontal.
+                LEEJS.div({class:"tabs"}),
+                LEEJS.div({class:"contents"}),
+            ),
+        );
+    }
+}interface IView {
+
+};
+
+async function selectBlock(b:Block_Visual|null,editText:boolean|null=null){
+    // if(selected_block==b && editText===inTextEditMode) return;
+
+    if(b===null){
+        selected_block = null;
+        if(document.activeElement)
+            (document.activeElement! as HTMLElement).blur();
+        //document.body.focus();
+        inTextEditMode = false;
+        updateSelectionVisual();
+    return; }
+    // if(b===null) return;
+    // selectBlock(null);
+    //let _prevSelection = selected_block;
+    // console.error(document.activeElement,b,editText,inTextEditMode);
+    
+    //selected_block = b;
+    // posto pri renderAll za Block_Visual mi obrisemo svu decu i rekreiramo, selekcija nam se gubi. Ali svi block-visual imaju unique id recimo. Tako da mozemo po tome selektovati.
+    // mozda bolje da zapravo generisem unique block visual id umesto da se oslanjam na block id al jbg.
+    const id = b.id();
+    selected_block = null;
+
+    await (new Promise(resolve => setTimeout(()=>{
+        const foundSelectBlock = STATIC.pageView.querySelector(`div.block[data-b-id="${id}"]`) as HTMLElement;
+        if(foundSelectBlock)
+            selected_block = el_to_BlockVis.get(foundSelectBlock);
+        else
+            selected_block = null;
+
+        if(editText || (editText===null && inTextEditMode)){
+            inTextEditMode = true;
+            if(document.activeElement != b.editor!.e){
+                if(document.activeElement)
+                    (document.activeElement! as HTMLElement).blur();    
+                FocusElement(selected_block!.editor!.e);
+            }
+            // console.log('focusing e')
+        }else{
+            inTextEditMode = false;
+            if(document.activeElement != b.el!){
+                if(document.activeElement)
+                    (document.activeElement! as HTMLElement).blur();
+                FocusElement(selected_block!.el!);
+            }
+            // console.log('focusing el')
+        }
+        updateSelectionVisual();
+    },2)));
+}
+
+function FocusElement(el:HTMLElement){
+    // el.dispatchEvent(new FocusEvent("focus"));
+    // console.error("FOCUSING ",el);
+    el.focus();
+
+    
+}/*
 User is viewing a single page.
 */
 
@@ -993,49 +1252,117 @@ class Page_Visual{
     pageId : Id;
     children : Block_Visual[];
     childrenHolderEl:HTMLElement;
-    
+    alreadyRendered : boolean;
     constructor(){
         this.pageId = "";
         this.children = [];
+        this.alreadyRendered = false;
 
         this.childrenHolderEl = null as any;
     }
     page():Block{
         return _BLOCKS[this.pageId]!;
     }
+    block_():Block{
+        return _BLOCKS[this.pageId]!;
+    }
+    block():Promise<Block>{
+        return BLOCKS(this.pageId);
+    }
+    id():Id{
+        return this.pageId;
+    }
+    appendChild(childBV: Block_Visual, idx=-1){
+        if(idx<0){
+            this.children.push(childBV);
+            this.childrenHolderEl.appendChild(childBV.el!);
+        }else{
+            this.children.splice(idx,0,childBV);
+            this.childrenHolderEl.insertBefore(childBV.el,this.childrenHolderEl.children.item(idx));
+        }
+        // this.renderChildren();
+        this.updateBlocksById(this.pageId);
+    }
+    async deleteChild(childBV:Block_Visual){
+        const idx = this.children.indexOf(childBV);
+        if(idx>=0){
+            this.children[idx].deleteSelf();
+            BlkFn.DeleteBlockOnce(childBV.blockId);
+            this.children.splice(idx,1);
+            let b = (await this.block());
+            b.children.splice(idx,1);
+            b.DIRTY();
+            this.renderChildren();
+        }
+        // if(selected_block == childBV) selectBlock(null);
+        //this.updateStyle();
+        this.updateBlocksById(this.pageId);
+    }
+    async renderChildren(maxUncollapseDepth=999){
+        if(this.children.length>0){
+            this.children.forEach(c=>c.deleteSelf());
+        }
+        this.children = [];
+        this.childrenHolderEl.innerHTML = "";
+        
+        let b = await this.block();
+        for(let i = 0; i<b.children.length; i++){
+            //if(_BLOCKS[b.children[i]]==null) continue; // skip not yet loaded. [TODO] add a button to load more.
+            let b2 = await BLOCKS(b.children[i],2);
+            let bv2 = await b2.makeVisual(this.childrenHolderEl, maxUncollapseDepth);
+            this.children.push(bv2);
+            //await bv2.renderChildren();
+            //await makeBlockAndChildrenIfExist(bv2);
+        }   
+    }
+
     async openPage(newPageId:Id){
+        const maxUncollapseDepth = 999;
+
         this.childrenHolderEl = STATIC.blocks;
-        await loadBlock(newPageId,3);
+        await loadBlock(newPageId,maxUncollapseDepth);
         this.pageId = newPageId;
         this.children = [];
         
         await CheckAndHandle_PageNoBlocks();
-        this.render();
+        await this.makePage(maxUncollapseDepth);
     }
-    render(){
+    async makePage(maxUncollapseDepth=0){
+        if(this.alreadyRendered) throw new Error("Page is being made again. Why?");
+        this.alreadyRendered = true;
+
         const p = this.page();
         this.children = [];
         document.title = p.pageTitle ?? "";
         this.childrenHolderEl.innerHTML = ""; // clear
-        function makeBlockAndChildrenIfExist(bv:Block_Visual){
+        /*
+        async function makeBlockAndChildrenIfExist(bv:Block_Visual){
             //bv already exists and is created. Now we need to create visuals for its children (and theirs).
             //create block_visuals for children of bv, and repeat this for them recursively
-            let b = bv.block;
+            let b = await bv.block();
             bv.children = [];
-            for(let i = 0; i<b.children.length; i++){
-                if(_BLOCKS[b.children[i]]===undefined) continue; // skip not yet loaded. [TODO] add a button to load more.
-                let b2 = _BLOCKS[b.children[i]]!;
-                let bv2 = b2.makeVisual(bv.childrenHolderEl);
-                bv.children.push(bv2);
-                makeBlockAndChildrenIfExist(bv2);
+            if(bv.collapsed == false){
+                for(let i = 0; i<b.children.length; i++){
+                    //if(_BLOCKS[b.children[i]]==null) continue; // skip not yet loaded. [TODO] add a button to load more.
+                    let b2 = await BLOCKS(b.children[i]);
+                    let bv2 = b2.makeVisual(bv.childrenHolderEl);
+                    bv.children.push(bv2);
+                    await makeBlockAndChildrenIfExist(bv2);
+                }
             }
+        }*/
+        
+        this.renderChildren();
+    }
+    updateBlocksById(id:Id, action:null/*unknown*/|'deleted'|'edited'=null){
+        //TODO("Iterisi sve otvorene children. Podrzi deleted.");
+        /*
+        function updateBlockView(bv:Block_Visual){
+            if(bv.blockId != id) return;
+            bv.updateAll();
         }
-        for(let i = 0; i<p.children.length; i++){
-            let b = _BLOCKS[p.children[i]]!;
-            let bv = b.makeVisual(this.childrenHolderEl);
-            this.children.push(bv);
-            makeBlockAndChildrenIfExist(bv);
-        }
+        this.children.forEach(c=>updateBlockView(c));
+        */
     }
 };/// <reference lib="dom" />
 
@@ -1049,8 +1376,21 @@ let view :Page_Visual = new Page_Visual();;
 let selected_block :Block_Visual|null = null;
 let inTextEditMode = false;
 
-let el_to_BlockVis = new WeakMap<HTMLElement,Block_Visual>();
-
+const el_to_BlockVis = {_: new WeakMap<HTMLElement,Block_Visual>(),
+    get(key:HTMLElement , allowNull = false){
+        let r = this._.get(key) ?? null;
+        if(!allowNull) assert_non_null(key,"key");
+        return r;
+    },
+    set(key:HTMLElement,value:Block_Visual){
+        assert_non_null(key,"key"); assert_non_null(value,"value");
+        this._.set(key,value);
+    },
+    delete(key:HTMLElement){
+        assert_non_null(this._.has(key),"[Deleting nonexistent htmlElement key]");
+        this._.delete(key);
+    }
+}
 let ACT /*"Actions"*/ = {
     //double click handling (since if i blur an element it wont register dbclick)
     lastElClicked : null as HTMLElement|null,
@@ -1084,43 +1424,40 @@ let ACT /*"Actions"*/ = {
     }
 
 };
-let STATIC = {
+const STATIC = {
+    _body : document.body,
     style_highlighter : document.getElementById('highlighterStyle')!,
     blocks : document.getElementById('blocks')!,
+    pageView : document.getElementById('pageView')!,
 };
 
 function propagateUpToBlock(el:HTMLElement,checkSelf=true):Block_Visual|null{
-    let atr = null;
-    if(checkSelf) if(el.hasAttribute("data-b-id")) return el_to_BlockVis.get(el)!;
+    
+    if(checkSelf && el.hasAttribute("data-b-id"))
+        return assert_non_null(el_to_BlockVis.get(el) , "el->bv",DEBUG);
+    
     while(el!=STATIC.blocks && el!=document.body){
         el = el.parentElement!;
-        if(el && el.hasAttribute("data-b-id")) return el_to_BlockVis.get(el)!;
+        if(el && el.hasAttribute("data-b-id"))
+            return assert_non_null(el_to_BlockVis.get(el) , "el->bv",DEBUG);
     }
     return null;
 
 }
 function updateSelectionVisual(){
-    STATIC.style_highlighter.innerHTML = `div[data-b-id="${selected_block!.block.id}"]{\
-    background-color: red !important;\
-    padding-left: 0px;\
-    border-left: 4px solid #555555 !important;\
-    }`;
-}
-
-function selectBlock(b:Block_Visual,editText:boolean|null=null){
-    let _prevSelection = selected_block;
-
-    selected_block = b;
-    if(editText || (editText===null && inTextEditMode)){
-        inTextEditMode = true;
-        b.editor!.e.focus();
-        // console.log('focusing e')
-    }else{
-        if(editText!==null) inTextEditMode = false;
-        b.el!.focus();
-        // console.log('focusing el')
+    if(selected_block==null){
+        STATIC.style_highlighter.innerHTML = "";
+        return;
     }
-    updateSelectionVisual();
+    STATIC.style_highlighter.innerHTML = `div[data-b-id="${selected_block!.blockId}"]{\
+    background-color: var(--block-bg-selected-color) !important;\
+    /* padding-left: 0px; */\
+    /*border-left: 8px solid #555555 !important;*/\
+    }
+    div[data-b-id="${selected_block!.blockId}"]>div.editor.TinyMDE{\
+    background-color: var(--block-editor-bg-selected-color) !important;\
+    }
+    `;
 }
 
 /**
@@ -1131,7 +1468,7 @@ async function CheckAndHandle_PageNoBlocks(){
     if(view.pageId == "") return;
     let p = (await BLOCKS(view.pageId));
     if(p.children.length>0)return;
-    NewBlockInsidePage();
+    NewBlockInside(null);
 }
 
 // LEEJS.shared()("#pageView"); //not really needed
@@ -1152,171 +1489,204 @@ const SHIFT_FOCUS = {
     above_notOut:4,
     below_notOut:5,
 }
-function ShiftFocus(block:Block_Visual, shiftFocus:number /*SHIFT_FOCUS*/, skipCollapsed=true){
+function ShiftFocus(bv:Block_Visual, shiftFocus:number /*SHIFT_FOCUS*/, skipCollapsed=true){
+    if(bv == null) throw Error("No selection shift focus.");
+
+    function bv_above_sameLevel(bv:Block_Visual) : Block_Visual|null {
+        assert_non_null(bv);
+        /* Ako smo PRVO dete vracamo null (nobody above us) */
+        const i = bv.index();
+        if(i == 0) return null;
+        return (bv.parentChildrenArray())[i-1];
+    }
+    function bv_below_sameLevel(bv:Block_Visual) : Block_Visual|null {
+        assert_non_null(bv);
+        /* Ako smo ZADNJE dete vracamo null (nobody below us) */
+        const i = bv.index();
+        const arr = bv.parentChildrenArray();
+        // console.error(i,arr);
+        if(i >= (arr.length-1)) return null;
+        return (arr)[i+1];
+        
+    }
+    function bv_lowestChild_allLevels(bv:Block_Visual) : Block_Visual|null{
+        assert_non_null(bv);
+        /*
+        A       <-- bv
+        .. B
+        .. .. H
+        .. .. C
+        .. .. .. S
+        .. J
+        .. .. L
+        .. .. M     <-- return this
+        */
+        if(bv.collapsed || bv.children.length==0) return bv;  /* bv nema decu te je on lowest. */
+        const lastChild = bv.lastChild();
+        if(!lastChild) return null;
+        return bv_lowestChild_allLevels(lastChild);
+    }
+    function bv_above_anyLevel(bv:Block_Visual) : Block_Visual|null {
+        assert_non_null(bv);
+        /* Iznad nas moze biti bilo ko. To zavisi dal je na nekom levelu neko iznad nas collapsed ili expanded:
+        A
+        .. B
+        .. .. C    <-- return this
+        G          <-- we are here
+        
+        Primecujemo da je A an istom nivou kao i G.
+        dakle trebamo naci above us na nasem nivou.
+        ako nema, idemo na naseg parenta i ponavljamo proces.
+        */
+       let above_sameLvl = bv_above_sameLevel(bv);
+       
+       return( (above_sameLvl == null) ?
+            //nobody above us on same level. Therefore only our parent is above us (if they exist, else we are topmost of the whole page so return null anyways).
+            (bv.parent()) :
+            // ovaj iznad nas je ill collapsed (te nam treba on, a funkcije hendluje to), il ima (nested potencijalno) decu. Nama treba najnize dete cele hiearhije.
+            (bv_lowestChild_allLevels(above_sameLvl)) );
+
+    }
+    function bv_below_anyLevel(bv:Block_Visual) : Block_Visual|null {
+        assert_non_null(bv);
+        /*
+        // main trivial case : we have children
+        A
+        .. B
+        .. .. C     <-- we are here
+        .. .. ..  G        <-- return this
+
+        // second trivial case: below us on same level
+        A
+        .. B
+        .. .. C     <-- we are here
+        .. .. G        <-- return this
+
+        // non trivial:
+        
+        A
+        .. B
+        .. .. C     <-- we are here
+        .. G        <-- return this
+        
+        or (arbitrarily deeper depth)
+
+        A
+        .. B
+        .. .. C     <-- we are here
+        G           <-- return this
+        
+        
+        znaci odemo na naseg parenta.
+        vratimo ako postoji neko below naseg parenta na istom nivou (njegovom).
+
+        ponovimo proces.
+        na kraju il returnujemo il je parent==null
+        */
+
+        // main trivial case : we have children therefore below us is our first child.
+        if(bv.collapsed==false && bv.children.length>0)
+            return bv.firstChild();
+
+        // second trivial case:  there is someone below us on our level
+        const below_sameLvl = bv_below_sameLevel(bv);
+        if(below_sameLvl) return below_sameLvl;
+
+        // No more trivial cases. We must go to our parent.
+        while(true){
+            const bv_par = bv.parent();
+            if(bv_par==null) return null;  // if parent is null then we are on page root, and last on page (otherwise we would have had below_sameLevel). so nobody below us.
+            const parent_below_sameLvl = bv_below_sameLevel(bv_par);
+            if(parent_below_sameLvl)
+                return parent_below_sameLvl;
+            bv=bv_par;
+            //repeat.
+        }
+    }
+
     //if skipCollapsed, then it wont go into children of collapsed blocks (not visible).
-    let focusElement = null as Block_Visual|null|undefined;
+    let focusElement = null as Block_Visual|null;
     if(shiftFocus == SHIFT_FOCUS.above_notOut){
-        focusElement = el_to_BlockVis.get(block.el!.previousElementSibling as HTMLElement);
+        focusElement = bv_above_sameLevel(bv);
     }else if(shiftFocus == SHIFT_FOCUS.below_notOut){
-        focusElement = el_to_BlockVis.get(block.el!.nextElementSibling as HTMLElement);
+        focusElement = bv_below_sameLevel(bv);
     }else if(shiftFocus == SHIFT_FOCUS.above){
-        // case 1: check siblings
-        focusElement = el_to_BlockVis.get(block.el!.previousElementSibling as HTMLElement);
-        if(focusElement){
-            // ok we go to earlier sibling, but we need to go to last nested child since thats whats above us (child is below their parent)
-            while(true){
-                if(skipCollapsed && focusElement.collapsed) break;
-                if(focusElement.children.length>0){
-                    focusElement = focusElement!.children[focusElement!.children.length-1];
-                }else{
-                    break;
-                }
-            }
-        }
-        // case 2: no siblings earlier than us, go to parent
-        if(!focusElement)
-            focusElement = block.parent();
-        
-        //focusElement = propagateUpToBlock(block.el!.previousSibling,true);
+        focusElement = bv_above_anyLevel(bv);    
     }else if(shiftFocus == SHIFT_FOCUS.below){
-        // case 1: check siblings
-        //focusElement = el_to_BlockVis.get(block.el!.nextElementSibling as HTMLElement);
-        // case 2: no siblings after us, go to element below us
-        if(!focusElement){
-            /* What element is below us?
-            {
-                {
-                    {
-                        .. previous siblings ..
-                        <-- we are here
-                    }
-                }
-            }
-            {}  <-- we need to jump to this
-
-            so the algorithm is:
-            keep going up (seeking parent)
-            get index of parent (in parent's parent list of children)
-            as long as parent is last, keep repeating
-
-            once parent isnt last index, we jump to whatever is after parent.
-
-            if we reach root (no parent) then we are last globally and no blocks are below us.
-            */
-            let p = block,pp:Block_Visual|null=null;
-            do{
-                pp = p.parent()!;
-                if(pp){
-                    let index = pp.children.indexOf(p);
-                    if(index==-1) throw new Error("unexpected");
-                    if(index != (pp.children.length-1)) //not last!
-                    {
-                        focusElement = pp.children[index+1];
-                        break;
-                    }
-                }else{ //p is root.
-
-                    break;
-                }
-                p = pp;
-
-            }while(p=p.parent()!);
-
-            focusElement = p!.children[0]!;
-            
-        }
-            focusElement = block.parent();
-
-        
-        //focusElement = propagateUpToBlock(block.el!.nextSibling,true);
-    }else if(shiftFocus == SHIFT_FOCUS.firstChild){// throw new Error("[TODO]");
-        focusElement = block.children[0]!;
-        //focusElement = block.el!.nextSibling!;
+        focusElement = bv_below_anyLevel(bv);
+    }else if(shiftFocus == SHIFT_FOCUS.firstChild){
+        focusElement = bv.firstChild();
     }else if(shiftFocus == SHIFT_FOCUS.parent){ //throw new Error("[TODO]");
-        focusElement = block.parent();
-        //focusElement = block.el!.nextSibling!;
+        focusElement = bv.parent();
     }else throw new Error("shiftFocus value must be one of/from SHIFT_FOCUS const object.")
     
     if(focusElement){
-        focusElement.el.dispatchEvent(new FocusEvent("focus"));
+        FocusElement(focusElement.el);
         return focusElement;
     }
     return null;
 }
 
 async function NewBlockAfter(thisBlock:Block_Visual){
-    let h = thisBlock.el!.parentElement!; //parent node
-    let parentBlockVis = propagateUpToBlock(h); //Get parent or Page of view / window.
-    let parentBlock = (parentBlockVis == null)? (view!.pageId) : (parentBlockVis.block.id);
+    let parentBlockVis = thisBlock.parentOrPage(); //Get parent or Page of view / window.
+    let parentBlock = parentBlockVis.id();
+    let parentHolder = parentBlockVis.childrenHolderEl;
 
-    let thisBlockIdx = Array.from(h.children).indexOf(thisBlock.el!);
-    if(thisBlockIdx<0)throw new Error("Could not determine new index.");
-    let blockVis = (await Block.new("")).makeVisual(h);
-    await BlkFn.InsertBlockChild(parentBlock,blockVis.block.id,thisBlockIdx+1);
-    let next = thisBlock.el!.nextSibling;
-    if(next!=null)
-        h.insertBefore(blockVis.el!, next);
+    const idx = thisBlock.index()+1;
+
+    let blockVis = await (await Block.new("")).makeVisual(parentHolder);
+    await BlkFn.InsertBlockChild(parentBlock,blockVis.blockId,idx);
+    parentBlockVis.appendChild(blockVis,idx);
     
     selectBlock(blockVis,inTextEditMode);
+    view!.updateBlocksById(parentBlock);
     return blockVis;
 }
-async function NewBlockInside(thisBlock:Block_Visual){
-    let h = thisBlock.el!;//.parentElement!; //parent node
-    let blockVis = (await Block.new("")).makeVisual(h);
-    await BlkFn.InsertBlockChild(thisBlock.block.id,blockVis.block.id,thisBlock.block.children.length); //as last
+async function NewBlockInside(thisBlockVis:Block_Visual|Page_Visual|null , idx=-1){
+    if(thisBlockVis==null) thisBlockVis = view!;
+    let parentBlock = thisBlockVis.id();
+    let parentHolder = thisBlockVis.childrenHolderEl;
+
+    let blockVis = await (await Block.new("")).makeVisual(parentHolder);
+    await BlkFn.InsertBlockChild(parentBlock,blockVis.blockId,idx);
+    thisBlockVis.appendChild(blockVis,idx);
     
-    // thisBlock.block.children.push(blockVis.block.id);
-
-    thisBlock.childrenHolderEl.appendChild(blockVis.el);
-    thisBlock.children.push(blockVis);
-
     selectBlock(blockVis,inTextEditMode);
+    view!.updateBlocksById(parentBlock);
     return blockVis;
 }
-async function NewBlockInsidePage(){
-    // let h = view.el!;//.parentElement!; //parent node
-    let blockVis = (await Block.new("")).makeVisual();
-    await BlkFn.InsertBlockChild(view.pageId,blockVis.block.id, (await BLOCKS(view.pageId)).children.length); //as last
+// async function NewBlockInsidePage(){
+//     // let h = view.el!;//.parentElement!; //parent node
+//     let blockVis = await (await Block.new("")).makeVisual();
+//     await BlkFn.InsertBlockChild(view.pageId,blockVis.blockId, (await BLOCKS(view.pageId)).children.length); //as last
     
-    // thisBlock.block.children.push(blockVis.block.id);
+//     // thisBlock.block.children.push(blockVis.block.id);
 
-    view.childrenHolderEl.appendChild(blockVis.el);
-    view.children.push(blockVis);
+//     view.childrenHolderEl.appendChild(blockVis.el);
+//     view.children.push(blockVis);
 
-    selectBlock(blockVis,inTextEditMode);
-    return blockVis;
-}
+//     selectBlock(blockVis,inTextEditMode);
+//     return blockVis;
+// }
 
-async function DeleteBlockVisual(blockVis:Block_Visual){
-    // delete one visual instance of this block
-    let parent = blockVis.parent();
-    if(parent === null){
-        STATIC.blocks.removeChild(blockVis.el);
-    }else{
-        blockVis.el.parentElement?.removeChild(blockVis.el);
+STATIC._body.addEventListener('click',(e:MouseEvent)=>{
+    if(!(e.target) || propagateUpToBlock(e.target as HTMLElement) == null){
+        selectBlock(null);
     }
-    BlkFn.DeleteBlockOnce(blockVis.block.id);
-    
-    // let els = document.querySelectorAll(`div[data-id="${delete_list[i].block.id}"]`);
-    // for(let j=0,jl=els.length;j<jl;j++)
-    //     els[j].parentNode?.removeChild(els[j]);
-}
-async function DeleteBlockEverywhere(blockVis:Block_Visual){
-       
-    // let els = document.querySelectorAll(`div[data-id="${delete_list[i].block.id}"]`);
-    // for(let j=0,jl=els.length;j<jl;j++)
-    //     els[j].parentNode?.removeChild(els[j]);
-}
-
-/// <reference lib="dom" />
-
-declare var TinyMDE : any;
-declare var LEEJS : any;
-
+});
+STATIC._body.addEventListener('keydown',(e:KeyboardEvent)=>{
+    if(e.key == 'Tab'){
+        SEARCHER.toggleVisible();
+        e.preventDefault();
+        e.stopPropagation();
+    }
+});
 STATIC.blocks.addEventListener('keydown',async (e:KeyboardEvent)=>{
     if(ACT.isEvHandled(e)) return;
     ACT.setEvHandled(e);
     // console.log(e);
+
+    HELP.logCodeHint("Navigation","Listeners/handlers for navigation keys.");
 
     let cancelEvent = true;
     
@@ -1324,6 +1694,9 @@ STATIC.blocks.addEventListener('keydown',async (e:KeyboardEvent)=>{
     if(e.key == 'ArrowUp'){
         if(selected_block) 
             ShiftFocus(selected_block, e.shiftKey?SHIFT_FOCUS.above_notOut:SHIFT_FOCUS.above);
+    }else if(e.key == 'ArrowDown'){
+        if(selected_block) 
+            ShiftFocus(selected_block, e.shiftKey?SHIFT_FOCUS.below_notOut:SHIFT_FOCUS.below);
     }else if(e.key == 'ArrowLeft'){
         if(selected_block){
             ShiftFocus(selected_block, SHIFT_FOCUS.parent);
@@ -1334,41 +1707,67 @@ STATIC.blocks.addEventListener('keydown',async (e:KeyboardEvent)=>{
             ShiftFocus(selected_block, SHIFT_FOCUS.parent);
             ShiftFocus(selected_block, SHIFT_FOCUS.below_notOut);
         }
-    }else if(e.key == 'ArrowDown'){
-        if(selected_block) 
-            ShiftFocus(selected_block, e.shiftKey?SHIFT_FOCUS.below_notOut:SHIFT_FOCUS.below);
     }else if(e.key=='Tab'){
         if(selected_block){
             ShiftFocus(selected_block,e.shiftKey?SHIFT_FOCUS.above:SHIFT_FOCUS.below);
         }
+    }else if(e.key == 'Escape'){
+        selectBlock(null);
     }else if(e.key=='Enter'){
-        if(e.shiftKey){
-            if(selected_block)
-                NewBlockInside(selected_block);
-        }
-        else if(e.ctrlKey){
-            if(selected_block)
+
+        if(selected_block){
+            if(e.shiftKey){
+                if(e.ctrlKey)
+                    selectBlock( await NewBlockInside(selected_block.parentOrPage(),selected_block.index()) ,true);
+                else
+                    selectBlock(await NewBlockInside(selected_block), true);
+            }
+            else if(e.ctrlKey){
                 selectBlock( await NewBlockAfter(selected_block) ,true);
-        }
-        else if(selected_block && !inTextEditMode){
-            selectBlock(selected_block,true);
+            }
+            else if(selected_block && !inTextEditMode){
+                selectBlock(selected_block,true);
+            }
         }
         //console.log(e);
     }else if(e.key=='Delete'){
-        DeleteBlockVisual(selected_block!);   
-    }else if(e.key=='Space'){
-        throw new Error("[TODO] open options");   
+        if(selected_block){
+            //prepare things so we can later select a new element after deleting
+            const parent = selected_block.parent();
+            const parArr = selected_block.parentChildrenArray();
+            const selfIdx = selected_block.index();
+
+            //delete self
+            selected_block.parentOrPage().deleteChild(selected_block);
+            
+            //select new element
+            if(parArr.length == 0){
+                selectBlock(parent);
+            }else if(selfIdx>=parArr.length){
+                selectBlock(parArr.at(-1)!);  // we were last so select last
+            }else{
+                selectBlock(parArr[selfIdx]);
+            }
+        }
+    }else if(e.key==' '||e.key=='Space'){ // ' ' actually matches, 'Space' doesnt
+        if(selected_block) 
+            selected_block.collapseTogle();
     }else{
         cancelEvent = false;
     }
 
-    if(cancelEvent){e.preventDefault();e.stopPropagation();}
+    if(cancelEvent){e.preventDefault();e.stopImmediatePropagation();}
 
     // console.log("BLOCKS:",e);
 });
 
+/// <reference lib="dom" />
+
+declare var TinyMDE : any;
+declare var LEEJS : any;
+
 class Block_Visual{
-    block:Block;
+    blockId:Id;
     children:Block_Visual[];
     
     collapsed : boolean;
@@ -1378,19 +1777,22 @@ class Block_Visual{
     editor:any;  //editor inside block
     childrenHolderEl:HTMLElement;
 
-    constructor(b:Block,parentElement?:HTMLElement){
-        this.block = b;
+    finished:boolean; //was it fully rendered or no (just constructed (false) or renderAll called also (true))
+
+    constructor(b:Block,parentElement?:HTMLElement , collapsed = true){
+        this.blockId = b.id;
         this.children = [];
-        this.collapsed = false;
+        this.collapsed = collapsed;
+        this.finished = false;
         
         this.el = LEEJS.div({
             class:"block",
             $bind:b, $bindEvents:b, "data-b-id":b.id, 
-            tabindex:0,
+            tabindex:"-1",
         },[LEEJS.div(LEEJS.$I`editor`),
             LEEJS.div(LEEJS.$I`children`)])
         .appendTo(parentElement ?? STATIC.blocks) as HTMLElement;
-
+        
         el_to_BlockVis.set(this.el,this);
 
         this.childrenHolderEl = this.el.querySelector('.children')!;
@@ -1406,51 +1808,87 @@ class Block_Visual{
         //     element: "toolbar",
         //     editor: tinyMDE,
         //   });
-
-        this.el.addEventListener('focus',(ev:FocusEvent)=>{
+        
+        this.el.addEventListener('focus',async (ev:FocusEvent)=>{
             if(ACT.isEvHandled(ev)) return;
             ACT.setEvHandled(ev);
             selectBlock(this);
+            ev.stopImmediatePropagation();
+            ev.preventDefault();
         });
-        this.editor.e.addEventListener('focus',(ev:FocusEvent)=>{
+        this.editor.e.addEventListener('focus',async (ev:FocusEvent)=>{
             if(ACT.isEvHandled(ev)) return;
             ACT.setEvHandled(ev);
             selectBlock(this);
+            ev.stopImmediatePropagation();
+            ev.preventDefault();
         });
-        this.editor.e.addEventListener('click',(ev:MouseEvent)=>{
+        this.editor.e.addEventListener('click',async (ev:MouseEvent)=>{
             if(ACT.isEvHandled(ev)) return;
+            // console.error("editor click");
             ACT.setEvHandled(ev);
 
             //console.log("click e");
             let c = ACT.fn_OnClicked(this.editor.e);
-            if(c==ACT.DOUBLE_CLICK)
+            if(c==ACT.DOUBLE_CLICK){
                 selectBlock(this,true);
-            else
+            }else
                 selectBlock(this);
         });
-        this.editor.addEventListener('input',(ev:TMDE_InputEvent)=>{
+        this.el.addEventListener('click',async (ev:MouseEvent)=>{
+            if(ACT.isEvHandled(ev)) return;
+            // console.error("El click");
+            ACT.setEvHandled(ev);
+
+            //console.log("click e");
+            let c = ACT.fn_OnClicked(this.editor.e);
+            if(c==ACT.DOUBLE_CLICK){
+                let xFromLeftEdge = ev.clientX - this.el.getBoundingClientRect().x;
+                if(xFromLeftEdge<=8) //alert(xFromLeftEdge + "CLICKED");
+                {
+                    this.collapseTogle();
+                }
+                // alert("CLICKED");
+                    // if(ev.x)
+            //    selectBlock(this,true);
+            }
+            //else selectBlock(this);
+        });
+
+        this.editor.addEventListener('input',async (ev:TMDE_InputEvent)=>{
             //let {content_str,linesDirty_BoolArray} = ev;
             b.text = ev.content;//content_str;
+            b.DIRTY();
         });
-        this.editor.e.addEventListener('keydown',(e:KeyboardEvent)=>{
+        this.editor.e.addEventListener('keydown',async (e:KeyboardEvent)=>{
             if(ACT.isEvHandled(e)) return;
             ACT.setEvHandled(e);
 
+            HELP.logCodeHint("Navigation","Listeners/handlers inside Visual_Block");
+            // return;
             // console.log(e);
             let cancelEvent = true;
             if(e.key == 'Escape'){
-                selectBlock(this,false);
-            }else if(e.key=='Tab'){
-                ShiftFocus(this, e.shiftKey?SHIFT_FOCUS.above:SHIFT_FOCUS.below);
-            }else if(e.key=='Enter'){
+                // if(document.activeElement == this.editor.e){
+                    selectBlock(this,false);
+                // }else{
+                //     selectBlock(null);
+                // }
+            }
+            // else if(e.key=='Tab'){
+            //     ShiftFocus(this, e.shiftKey?SHIFT_FOCUS.above:SHIFT_FOCUS.below);
+            // }
+            else if(e.key=='Enter'){
                 if(e.ctrlKey){ //insert new block below current block
-                    NewBlockAfter(this);
+                    selectBlock(await NewBlockAfter(this), true);
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
                 }
                 else if(e.shiftKey){
-                    NewBlockInside(this);
+                    selectBlock(await NewBlockInside(this), true);
                     // e.shiftKey = false;
                     e.preventDefault();
-                    e.stopPropagation();
+                    e.stopImmediatePropagation();
                     
                 }else{
                     cancelEvent = false;
@@ -1460,50 +1898,136 @@ class Block_Visual{
                 cancelEvent = false;
             }
             if(cancelEvent)
-                {e.preventDefault();e.stopPropagation();}
+                {e.preventDefault();e.stopImmediatePropagation();}
         });
     }
+
+    
+    _block() :Block|null{
+        return _BLOCKS[this.blockId];
+    }
+    block() :Promise<Block>{
+        return BLOCKS(this.blockId);
+    }
+    id():Id{
+        return this.blockId;
+    }
+    
     parent():Block_Visual|null{
         return propagateUpToBlock( this.el.parentElement! );
+    }
+    parentOrPage():Block_Visual|Page_Visual{
+        const p = this.parent();
+        if(p==null) return view!;
+        return p;
+    }
+    firstChild() : Block_Visual|null {
+        if(this.children.length==0) return null;
+        return this.children[0];
+    }
+    lastChild() : Block_Visual|null {
+        if(this.children.length==0) return null;
+        return this.children.at(-1)!;
     }
     index():number{
         let p = this.parent();
         if(p) return p.children.indexOf(this);
         return view!.children.indexOf(this);
     }
-    collapseTogle(setValue:boolean|null=null){
-        if(setValue!==null) this.collapsed = setValue;
-        else this.collapsed = !this.collapsed;
-
+    parentChildrenArray() : Block_Visual[]{    
+        let p = this.parent();
+        if(p) return p.children;
+        return view!.children;
+    }
+    appendChild(childBV: Block_Visual, idx=-1){
+        if(idx<0){
+            this.children.push(childBV);
+            this.childrenHolderEl.appendChild(childBV.el!);
+        }else{
+            this.children.splice(idx,0,childBV);
+            this.childrenHolderEl.insertBefore(childBV.el,this.childrenHolderEl.children.item(idx));
+        }
+        // this.renderChildren();
+        this.updateStyle();
+    }
+    async deleteChild(childBV:Block_Visual){
+        const idx = this.children.indexOf(childBV);
+        if(idx>=0){
+            this.children[idx].deleteSelf();
+            BlkFn.DeleteBlockOnce(childBV.blockId);
+            this.children.splice(idx,1);
+            let b = (await this.block());
+            b.children.splice(idx,1);
+            b.DIRTY();
+            this.renderChildren();
+        }
+        if(selected_block == childBV) selectBlock(null);
+        this.updateStyle();
+        view!.updateBlocksById(this.blockId);
+    }
+    
+    deleteSelf(){
+        el_to_BlockVis.delete(this.el);
+        this.el.parentElement?.removeChild(this.el);
+    }
+    updateStyle(){
         if(this.collapsed)
             this.childrenHolderEl.style.display = "none";
-        if(this.collapsed)
-            this.childrenHolderEl.style.display = "auto";
+        else
+            this.childrenHolderEl.style.display = "inherit";
+
+        if(this._block()!.children.length==0){
+            this.el.classList.add("empty");   
+        }else{
+            this.el.classList.remove("empty");
+            if(this.collapsed) this.el.classList.add("collapsed");
+            else this.el.classList.remove("collapsed");
+        }
+
+    }
+    async updateAll(maxUncollapseDepth=999){
+        this.collapsed = (await this.block()).collapsed;
+        if(maxUncollapseDepth<=0) this.collapsed = true;
+        await this.renderChildren(maxUncollapseDepth);
+        this.updateStyle();
+        this.finished = true;
+        // if(this.collapsed == false && maxUncollapseDepth>1){
+        //     for(let i = 0; i < this.children.length; i++)
+        //         await this.children[i].updateAll(maxUncollapseDepth-1);
+        // }
+    }
+    async renderChildren(maxUncollapseDepth=999){
+        if(this.children.length>0){
+            this.children.forEach(c=>c.deleteSelf());
+        }
+        this.children = [];
+        this.childrenHolderEl.innerHTML = "";
+        if(this.collapsed == false){
+            let b = await this.block();
+            for(let i = 0; i<b.children.length; i++){
+                //if(_BLOCKS[b.children[i]]==null) continue; // skip not yet loaded. [TODO] add a button to load more.
+                let b2 = await BLOCKS(b.children[i],2);
+                let bv2 = await b2.makeVisual(this.childrenHolderEl, maxUncollapseDepth);
+                this.children.push(bv2);
+                //await bv2.renderChildren();
+                //await makeBlockAndChildrenIfExist(bv2);
+            }
+        }   
+    }
+    async collapseTogle(setValue:boolean|null=null){
+        // console.error("Toggle ",this.blockId,this.collapsed);
+        // console.trace();
+
+        if(setValue!==null) this.collapsed = setValue;
+        else this.collapsed = !this.collapsed;
+        const b = (await this.block());
+        if(b.collapsed != this.collapsed){
+            b.collapsed = this.collapsed;
+            b.DIRTY();
+        }
+
+        // console.error("Toggle2 ",this.blockId,this.collapsed);
+        await this.renderChildren();
+        this.updateStyle();
     }
 }
-
-setTimeout(
-(async function InitialOpen(){ //ask user to open some page (or make a page if none exist)
-    await LoadInitial();
-    if(Object.keys(PAGES).length==0){
-        let pageName = prompt("No pages exist. Enter a new page name:");// || "";
-        if(pageName == null){
-            window.location.reload();
-            return;
-        }
-        let p = await Block.newPage(pageName);
-        await view.openPage(p.id);
-    }else{
-        let pageName = prompt("No page open. Enter page name (must be exact):");// || "";
-        let srch;
-
-        //[TODO] use searcher, not this prompt.
-        if(pageName == null || (srch=await BlkFn.SearchPages(pageName,'includes')).length < 1){
-            window.location.reload();
-            return;
-        }
-
-        await view.openPage(srch[0]);
-    }
-}),
-1);

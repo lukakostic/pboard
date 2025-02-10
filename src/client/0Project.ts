@@ -1,8 +1,15 @@
 class ProjectClass {
     running_change_hash: string;
     __runningId : number;
+    version : string;
 
     DIRTY(){DIRTY.mark("PROJECT");}
+
+    constructor(){
+        this.running_change_hash = "-";
+        this.__runningId = 1;
+        this.version = "1";
+    }
 
     genChangeHash():string{
         this.running_change_hash = numToShortStr(
@@ -19,10 +26,6 @@ class ProjectClass {
         return this.__runningId.toString();
     }
     
-    constructor(){
-        this.running_change_hash = "-";
-        this.__runningId = 1;
-    }
 }
 RegClass(ProjectClass);
 

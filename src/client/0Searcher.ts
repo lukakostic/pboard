@@ -117,13 +117,15 @@ class SearchStatistics{
         this.push_list(this.recentlySearched_Pages,[id,(await BLOCKS(id)).pageTitle!]);
     }
     async recentlySearched_Tags_push(id:Id){
-        this.push_list(this.recentlySearched_Tags,[id,(await TAGS(id)).name]);
+        this.push_list(this.recentlySearched_Tags,[id,await (await TAGS(id)).getName()]);
     }
     async recentlyVisited_Pages_push(id:Id){
         this.push_list(this.recentlyVisited_Pages,[id,(await BLOCKS(id)).pageTitle!]);
     }
     async recentlyAdded_Tags_push(id:Id){
-        this.push_list(this.recentlyAdded_Tags,[id,(await TAGS(id)).name]);
+        this.push_list(this.recentlyAdded_Tags,[id,await (await TAGS(id)).getName()]);
     }
 }
 RegClass(SearchStatistics);
+
+

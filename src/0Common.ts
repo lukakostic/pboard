@@ -45,6 +45,11 @@ function numToShortStr(n :number) :string{
     return s;
 }
 
+function isEmptyObject(o:any){
+    for(let i in o) return false;
+    return true;
+}
+
 
 function filterNullMap( mapObj :any ) :any{
     const m = {} as any;
@@ -54,4 +59,13 @@ function filterNullMap( mapObj :any ) :any{
             m[k] = mapObj[k];
     }
     return m;
+}
+
+function assert_non_null(thing:any,msg="", actuallyCheck1_OrReturn0=true){
+    if(actuallyCheck1_OrReturn0 && !thing){
+        msg = `Assert fail: Unexpected null${msg?(" for "+msg):''}`;
+        console.error(msg); 
+        throw Error(msg);
+    }
+    return thing;
 }

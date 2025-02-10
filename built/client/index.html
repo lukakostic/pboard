@@ -22,19 +22,60 @@
   
 </head>
 <body>
+  <style>
+    :root {
+      --block-bg-color: lightgray;
+      --block-bg-selected-color: rgb(0, 174, 255);
+      --block-editor-bg-selected-color: rgb(242, 251, 255);
+
+      --block-edge-collapsed-color: rgba(198, 118, 141, 0.85);
+      --block-edge-expanded-color: rgba(140, 233, 140, 0.85);
+      --block-edge-empty-color: rgba(171, 171, 171, 0.7);
+    }
+    body {
+      margin: 0; /* for some reason it has 10px margin?..*/
+      min-height: calc( 100vh - 8px ); /* so it goes fully down so it can catch click events (for unselecting all blocks by clicking background)*/
+    }
+    #pageView {
+      margin: 5px;
+    }
+  </style>
     <style> /* Markdown blocks styles*/
         div.block {
             /* margin:1px; */
             margin-right:0;
-            padding:3px;
+            padding:2px;
             padding-right:0px;
-            background-color:transparent;
-            border-left: 1px solid gray;
-            border-top: 1px solid gray;
+            background-color:var(--block-bg-color);
+            /* border-left: 8px solid gray; */
+            border-top: 1px solid black;
+
+          user-select: none;
+        
+        }
+        #blocks{
+          /* Tako da blokovi imaju sve borders. Jer sami po sebi imaju samo top border */
+          border-bottom: 1px solid black;
+          border-left: 1px solid black;
+          border-right: 1px solid black;
+        }
+        #blocks>div.block{
+          padding-bottom: 3px !important;
+        }
+        div.block {
+          border-left: 8px solid var(--block-edge-expanded-color);
+        }
+        div.block.collapsed {
+          border-left: 8px solid var(--block-edge-collapsed-color);
+        }
+        div.block.empty {
+          border-left: 8px solid var(--block-edge-empty-color);
         }
         div.block > div.children {
-            padding-left:8px;
-            border-top: 1px solid gray;
+            margin-left: 6px;
+            border-left: 3px solid rgb(90, 90, 90);
+            padding-left: 1px;
+            /* border-top: 1px solid gray; */
         }
         #blocks > div.block {
             /* margin-right:1px !important; */
@@ -43,6 +84,7 @@
         }
         div.block:has( div.children:not(:empty) ) { /* block has children */
             padding-bottom: 0 !important;
+
             /* padding-right: 0 !important;
             margin-left: 0 !important; */
         }
@@ -126,6 +168,12 @@
         div.editor.TinyMDE>div.TMBlankLine:only-child{
             line-height: 5px;
             height: fit-content;
+        }
+        div.editor.TinyMDE{
+          /* padding:1px;
+          padding-left:3px;
+          padding-right: 3px; */
+          padding: 1px 3px;
         }
     </style>
     <style id="highlighterStyle"></style> <!-- contents set at runtime -->

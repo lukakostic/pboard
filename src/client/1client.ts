@@ -2,7 +2,7 @@
 var PROJECT = new ProjectClass();
 var SEARCH_STATISTICS = new SearchStatistics();
 
-type TBLOCKSn = {[index:Id]:Block|null};
+type TBLOCKSn = {[id:Id]:Block|null};
 var _BLOCKS : TBLOCKSn = {};  // all blocks
 async function BLOCKS( idx :Id , depth :number = 1 ):Promise<Block>{
     if(_BLOCKS[idx]===null)
@@ -10,10 +10,10 @@ async function BLOCKS( idx :Id , depth :number = 1 ):Promise<Block>{
     return _BLOCKS[idx]!;
 }
 
-type TPAGES = {[index:Id]:true};
+type TPAGES = {[id:Id]:true};
 var PAGES : TPAGES = {}; //all pages
 
-type TTAGSn = {[index:Id]:Tag|null};
+type TTAGSn = {[id:Id]:Tag|null};
 var _TAGS : TTAGSn = {};  // all tags
 async function TAGS( idx :Id , depth :number = 1 ):Promise<Tag>{
     if(_TAGS[idx]===null)
@@ -21,7 +21,7 @@ async function TAGS( idx :Id , depth :number = 1 ):Promise<Tag>{
     return _TAGS[idx]!;
 }
 
-
+let autosaveInterval :number|null = null;
 
 /*
 async function LoadAll(){
@@ -74,6 +74,7 @@ async function LoadInitial(){
     on demand objects for: _BLOCKS, _TAGS.
     */
     const resp = await CMsg_loadInitial(null);
+    console.log("LOAD INITIAL:",resp);
     if(resp instanceof Error)
         throw resp;
     else if(resp === false){ // server has no saved state (fresh install) 
@@ -85,26 +86,41 @@ async function LoadInitial(){
         PROJECT =  JSON_Deserialize(resp.PROJECT as any);   
     
         _BLOCKS = {};
-        for(let k in resp.ids_BLOCKS)
-            _BLOCKS[k] = null;
+        // console.log("LOAD INITIAL:",JSON.stringify(resp.ids_BLOCKS));
+        resp.ids_BLOCKS.forEach(id=>_BLOCKS[id] = null);
         _TAGS = {};
-        for(let k in resp.ids_TAGS)
-            _TAGS[k] = null;
-    
+        resp.ids_TAGS.forEach(id=>_TAGS[id] = null);
+        
+        console.log("LOAD INITIAL OVER:",PAGES,SEARCH_STATISTICS,PROJECT);
+        // console.log("LOAD INITIAL _BLOCKS:",JSON.stringify(_BLOCKS));
     }
 }
 async function SaveAll(){
     //    Server.sendMsg({n:Server.MsgType.saveAll,d:{TAGS:_TAGS,BLOCKS:_BLOCKS}});
-    if(DIRTY._.length==0 || DIRTY.error!==null) return;
+    if(DIRTY._.length==0 || DIRTY.error!==null){
+        if(DIRTY.error) throw DIRTY.error;
+        return;
+    }
         
     // send to server all dirty objects.
     // most importantly also send the ""
-    let oldChangeHash = PROJECT.running_change_hash;
-    PROJECT.genChangeHash();
+    const oldHash = PROJECT.running_change_hash;
+    if(oldHash == (new ProjectClass()).running_change_hash){ // initial save
+        SEARCH_STATISTICS.DIRTY(); 
+        PROJECT.DIRTY();
+        DIRTY.mark("PAGES");
+        // console.error("Initial save.");
+        // console.error(JSON.stringify(DIRTY._))
+    }
+
+    const newHash = PROJECT.genChangeHash();
+    
     //let packet : TMsg_saveAll_C2S["d"] = {hash:oldChangeHash,data:[]};
     let packet : TCMsg_saveAll__DataOrDeleted[] = [];
-    DIRTY._.forEach(p=>{
-        if(p[2]===undefined){ // thing was deleted.
+    for(let i = DIRTY._.length-1; i >= 0; i--){
+        const p = DIRTY._[i];
+        // console.error(p);
+        if(p[2]){ // thing was deleted.
             packet.push({path:[p[0],p[1]],deleted:true});
         }else{
             let evalStr = DIRTY.evalStringResolve(p[0],p[1]);
@@ -115,12 +131,18 @@ async function SaveAll(){
                 throw e;
             }
         }
-    });
-    const resp = await CMsg_saveAll({hash:oldChangeHash,data:packet});
+        DIRTY._.splice(i,1);
+    }
+    const resp = await CMsg_saveAll({hash:oldHash,newHash,data:packet});
     if(resp instanceof Error){
         DIRTY.error = resp;
         throw resp; // !!!!!!!!!!!!!!
     }
+}
+
+async function Backup(){
+    let r = await CMsg_backup(null);
+    throwIf(r);
 }
 
 async function loadBlock(blockId:Id,depth:number) {
@@ -132,6 +154,7 @@ async function loadBlock(blockId:Id,depth:number) {
     for(let key in newBLOCKS_partial){
         console.log("Loading block id:",key);
         _BLOCKS[key] = JSON_Deserialize( newBLOCKS_partial[key] );
+        console.info("Loaded block: ",key,_BLOCKS[key]);
     }  
 }
 async function loadTag(blockId:Id,depth:number) {
@@ -146,3 +169,4 @@ async function loadTag(blockId:Id,depth:number) {
         _TAGS[key] = JSON_Deserialize( newBLOCKS_partial[key] );
     }  
 }
+

@@ -26,14 +26,14 @@ class Tag_Cl{
         this._attribs = {};
     }
     __serialize__(){
-        return Object.setPrototypeOf({
+        return ApplyClass({
             id:this.id,
             name:this._name,
             parentTagId:this._parentTagId,
             childrenTags:this._childrenTags,
             blocks:this._blocks,
             attribs:this._attribs
-        },Tag.prototype);
+        },Tag);
     }
     static __deserialize__(o:any){
         let t = new Tag();

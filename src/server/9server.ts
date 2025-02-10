@@ -7,7 +7,7 @@ import * as fs from "jsr:@std/fs";
 
 //declare var Deno : any;
 
-const FILESPATH = `./FILES`;
+const FILESPATH = `../FILES`; // we are in built/   so go up once.
 const FILE = {
     PROJECT :           `${FILESPATH}/PROJECT`,
     SEARCH_STATISTICS : `${FILESPATH}/SEARCH_STATISTICS`,
@@ -25,6 +25,18 @@ try{
     running_change_hash = PROJECT.running_change_hash;
 }catch(e){}
 
+const backup_cmd = ()=>`cd ${FILESPATH} && git add . && git commit -m "${(new Date()).toLocaleString()}"`;
+function backup(){
+    (new Deno.Command( 'bash' , {
+        args: [
+        "-c",
+        backup_cmd(),
+        ]
+        // ,
+        // stdin: "piped",
+        // stdout: "piped",
+    })).spawn();
+}
 Deno.serve(
 {
     port:9020,
@@ -99,7 +111,7 @@ async function fn(req:any){
             let r = js.map((o:any)=>handleJson(o));
             console.log(r);
             if(r instanceof Error){
-                socket.send("error"+JSON_Serialize(r)!);
+                socket.send(JSON_Serialize(r)!);
                 console.error(r);
             }else{
                 for(let i = 0; i<r.length; i++){
@@ -122,9 +134,10 @@ async function fn(req:any){
     function handleJson(json:{n:string,d:any}){
         const handlers = {
             [Msg_saveAll]:(r:TCMsg_saveAll):TSMsg_saveAll=>{
-                const {hash,data} = r;
+                const {hash,newHash,data} = r;
                 if(hash != running_change_hash)
-                    return Error("RCH missmatch.");
+                    return Error("RCH missmatch: server: " + running_change_hash + " client: "+hash + " (clients new hash: "+newHash+" )");
+                
                 // TODO("save all changes to disk.");
                 for(let i = 0; i<data.length;i++){
                     let p = data[i].path;
@@ -134,20 +147,22 @@ async function fn(req:any){
                     let d = (data[i] as any).data;
                     
                     if(p[0]=="PROJECT"){
-                        if(p[1]!==undefined || !hasData) throw Error("Unexpected for PROJECT: "+p[1]+ " , "+hasData);
+                        if(p[1]!=null || !hasData) throw Error("Unexpected for PROJECT: "+p[1]+ " , "+hasData);
                         writeFile(FILE.PROJECT,d);
+                        
                     }else if(p[0]=="SEARCH_STATISTICS"){
-                        if(p[1]!==undefined || !hasData) throw Error("Unexpected for SEARCH_STATISTICS: "+p[1]+ " , "+hasData);
+                        if(p[1]!=null || !hasData) throw Error("Unexpected for SEARCH_STATISTICS: "+p[1]+ " , "+hasData);
                         writeFile(FILE.SEARCH_STATISTICS,d);
                     }else if(p[0]=="PAGES"){
+                        if(p[1]!=null || !hasData) throw Error("Unexpected for PAGES: "+p[1]+ " , "+hasData);
                         writeFile(FILE.PAGES,d);
                     }else if(p[0]=="_TAGS"){
-                        if(p[1]===undefined) throw Error("Unexpected TAGS: "+p[1]+ " , "+hasData);
+                        if(p[1]==null) throw Error("Unexpected TAGS: "+p[1]+ " , "+hasData);
                         const pth = FILE.TAGS(p[1]);
                         if(hasData) writeFile(pth,d);
                         else deleteFile(pth);
                     }else if(p[0]=="_BLOCKS"){
-                        if(p[1]===undefined) throw Error("Unexpected BLOCKS: "+p[1]+ " , "+hasData);
+                        if(p[1]==null) throw Error("Unexpected BLOCKS: "+p[1]+ " , "+hasData);
                         const pth = FILE.BLOCKS(p[1]);
                         if(hasData) writeFile(pth,d);
                         else deleteFile(pth);
@@ -155,6 +170,8 @@ async function fn(req:any){
                         return Error("Unknown save path: "+p);
                     }
                 }
+                console.log("NNNNNNNNNEW HASH : ",newHash,"old:",running_change_hash);
+                running_change_hash = newHash;
                 return true;
             },
             [Msg_eval]:(r:TCMsg_eval):TSMsg_eval=>{
@@ -164,27 +181,37 @@ async function fn(req:any){
                 
                 return ret;
             },
+            [Msg_backup]:(r:TCMsg_backup):TSMsg_backup=>{
+                backup();
+                return true;
+            },
             [Msg_loadInitial]:(r:TCMsg_loadInitial):TSMsg_loadInitial=>{
-                let ids_BLOCKS = [];
-                let ids_TAGS = [];
-                for(let f of fs.walkSync(FILE.BLOCKS_FOLDER,
-                    {maxDepth:1/*,exts:[".pb"]*/,includeDirs:false,includeFiles:true,includeSymlinks:false}
-                    )){
-                      ids_BLOCKS.push(f.name);
-                  }
-                for(let f of fs.walkSync(FILE.TAGS_FOLDER,
-                    {maxDepth:1/*,exts:[".pb"]*/,includeDirs:false,includeFiles:true,includeSymlinks:false}
-                    )){
-                      ids_TAGS.push(f.name);
-                  }
-                return {
-                    PROJECT           : readFile(FILE.PROJECT) as any,
-                    SEARCH_STATISTICS : readFile(FILE.SEARCH_STATISTICS) as any,
-                    PAGES             : readFile(FILE.PAGES) as any,
+                console.log("load initial");
+                try{
+                    let ids_BLOCKS = [];
+                    let ids_TAGS = [];
+                    for(let f of fs.walkSync(FILE.BLOCKS_FOLDER,
+                        {maxDepth:1/*,exts:[".pb"]*/,includeDirs:false,includeFiles:true,includeSymlinks:false}
+                        )){
+                        ids_BLOCKS.push(f.name);
+                    }
+                    for(let f of fs.walkSync(FILE.TAGS_FOLDER,
+                        {maxDepth:1/*,exts:[".pb"]*/,includeDirs:false,includeFiles:true,includeSymlinks:false}
+                        )){
+                        ids_TAGS.push(f.name);
+                    }
+                    return {
+                        PROJECT           : readFile(FILE.PROJECT) as any,
+                        SEARCH_STATISTICS : readFile(FILE.SEARCH_STATISTICS) as any,
+                        PAGES             : readFile(FILE.PAGES) as any,
 
-                    ids_BLOCKS,
-                    ids_TAGS,
-                };
+                        ids_BLOCKS,
+                        ids_TAGS,
+                    };
+                }catch(e){
+                    console.error("Failed to load initial:");
+                    console.error(e);
+                    return false;} // ako fale fajlovi. onda smo fresh install.
             },
             [Msg_loadBlock]:(r:TCMsg_loadBlock):TSMsg_loadBlock=>{
                 return client_loadBlock(r.id,r.depth);
@@ -194,13 +221,18 @@ async function fn(req:any){
             }
         }
         try{
-            let name = json.n;
-            let data = json.d;
+            let name = json.n as string;
+            let data = json.d as any;
             console.log("Handling:",name,data);
             if(name in handlers){
-                return (handlers as any)[name];
+                let resp = (handlers as any)[name](data);
+                console.log("HANDLED:",name,resp);
+                return resp;
             }else return Error("Unknown function to handle: '"+name+"' : "+json);
-        }catch(e){return e;}
+        }catch(e){
+            console.log("HANDLED:",json,"\n\n\n",e);
+            return e;
+        }
     }
 
 
@@ -232,8 +264,10 @@ function client_loadBlock(blockId:Id,depth:number){
         let block = JSON_Deserialize(blockJson,true);
         returnedBlocks[blockId] = blockJson;
         if(depth<=0) return;
-        for(let i = 0; i<block.children.length; i++)
-            loadBlock(block.children[i],depth-1);
+        if(block.children){
+            for(let i = 0; i<block.children.length; i++)
+                loadBlock(block.children[i],depth-1);
+        }
     }
     loadBlock(blockId,depth);
 

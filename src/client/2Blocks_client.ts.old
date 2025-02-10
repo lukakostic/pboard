@@ -57,7 +57,7 @@ class Block_Cl{
         this._attribs = {};
     }
     __serialize__(){ //called by serializer.
-        return Object.setPrototypeOf({
+        return ApplyClass({
             id:this.id,
             pageTitle:this._pageTitle,
             refCount:this._refCount,
@@ -65,7 +65,7 @@ class Block_Cl{
             children:this._children, /*serializer handles as normal array*/
             tags:this._tags, /*serializer handles as normal array*/
             attribs:this._attribs
-        },Block.prototype);
+        },Block);
     }
     static __deserialize__(o:any){
         // for(let k in Block._serializable_default){

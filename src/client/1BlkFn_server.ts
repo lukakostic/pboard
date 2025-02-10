@@ -27,57 +27,63 @@ const BlkFn = {
     //     return true;
     // },
     async RemoveTagFromBlock(blockId:Id,tagId:Id){ 
-        const t = await TAGS(tagId);
+        const t = await TAGS(tagId,0);
         t.blocks.splice(t.blocks.indexOf(blockId),1); //remove block from tag
         t.DIRTY();
-        const b = await BLOCKS(blockId);
+        const b = await BLOCKS(blockId,0);
         b.tags.splice(b.tags.indexOf(tagId),1); //remove tag from block
         b.DIRTY();
     },
     async RemoveAllTagsFromBlock(blockId:Id){  ////let $$$CL_clone;
-        const b = await BLOCKS(blockId);          ////if($CL&&!b)return;
+        const b = await BLOCKS(blockId,0);          ////if($CL&&!b)return;
         for(let i = 0; i<b.tags.length; i++){
-            const t = await TAGS(b.tags[i]);          ////if($CL&&!t)continue;
+            const t = await TAGS(b.tags[i],0);          ////if($CL&&!t)continue;
             t.blocks.splice(t.blocks.indexOf(blockId),1); //remove block from tag
             t.DIRTY();
         }
         b.tags = [];//    b.tags.splice(b.tags.indexOf(tagId),1); //remove tag from block
         b.DIRTY();
     },
+    async AddTagToBlock(blockId:Id,tagId:Id){
+        const b = await BLOCKS(blockId,0);
+        const t = await TAGS(tagId,0);
+        
+    },
     async DeleteBlockOnce(id:Id){  ////let $$$CL_diff;
-        const b = await BLOCKS(id);
-        b.DIRTY();
-        if(--(b.refCount)>0) return;// false; //not getting fully deleted
-        //deleting block.
-        for(let i = 0; i<b.children.length;i++)
-            await this.DeleteBlockOnce(b.children[i]);
-        await this.RemoveAllTagsFromBlock(id);
-        if(PAGES[id]) delete PAGES[id];
-        DIRTY.mark("PAGES",id,undefined);
-
-        // _BLOCKS[id].DIRTY_deleted();
-        delete _BLOCKS[id];
-        Block.DIRTY_deletedS(id);
-        TODO("Delete BLOCKS and PAGES on server");
-        return;// true; //got fully deleted
+        if(_BLOCKS[id]==undefined) return false;
+        const b = await BLOCKS(id,0);
+        // console.error("delete once",id,b.refCount);
+        b.refCount--;
+        
+        if(b.refCount>0){ b.DIRTY(); return false; }// false; //not getting fully deleted
+        //deleting block fully
+        if(b.refCount==0)
+            await BlkFn.DeleteBlockEverywhere(id);
+        
+        return true;// true; //got fully deleted
     },
     async DeleteBlockEverywhere(id:Id){  ////let $$$CL_diff;
-        const b = await BLOCKS(id);
+        if(_BLOCKS[id]==undefined) return;
+        const b = await BLOCKS(id,0);
         b.refCount=0;
-        for(let i = 0; i<b.children.length;i++)
-            await this.DeleteBlockOnce(b.children[i]);
+        for(let i = 0; i<b.children.length;i++){
+            // console.error("delete everywhere ",id,"child:",b.children[i],"i"+i,b.children.length);
+            if(await this.DeleteBlockOnce(b.children[i])) i--;
+        }
         await this.RemoveAllTagsFromBlock(id);
-        if(PAGES[id]) delete PAGES[id];
-        DIRTY.mark("PAGES",id,undefined);
+        if(PAGES[id]){ delete PAGES[id]; DIRTY.mark("PAGES"); }
         delete _BLOCKS[id];
         Block.DIRTY_deletedS(id);
         // Search all blocks and all tags. Remove self from children.
         
         let allBlocks = Object.keys(_BLOCKS);
         for(let i = 0; i<allBlocks.length;i++){
-            const b2 = await BLOCKS(allBlocks[i]);
-            b2.children = b2.children.filter((x:any)=>(x!=id));
-            b2.DIRTY();
+            if(_BLOCKS[allBlocks[i]]==undefined) continue;
+            const b2 = await BLOCKS(allBlocks[i],0);
+            if(b2.children.includes(id)){
+                b2.children = b2.children.filter((x:any)=>(x!=id));
+                b2.DIRTY();
+            }
             WARN("We arent modifying array in-place (for performance), caller may hold old reference");
             /*
             let oc = b2.children;
@@ -86,19 +92,19 @@ const BlkFn = {
                 oc.splice(0,oc.length,...nc);    // in-place set new array values
             }*/
         }
-        
+        /*
         let allTags = Object.keys(_TAGS);
         for(let i = 0; i<allTags.length;i++){
             const t2 = await TAGS(allTags[i]);
             t2.blocks = t2.blocks.filter((x:any)=>(x!=id));
             t2.DIRTY();
             WARN("We arent modifying array in-place (for performance), caller may hold old reference");
-        }
+        }*/
     },
     async InsertBlockChild(parent:Id, child:Id, index:number )/*:Id[]*/{  ////let $$$CL_clone;
         const p = await BLOCKS(parent);                 ////if($CL&&!p)return;
         const l = p.children;
-        if(index >= l.length){
+        if(index >= l.length || index<0){
             l.push(child);
         }else{
             l.splice(index,0,child);
@@ -108,6 +114,7 @@ const BlkFn = {
     },
     async SearchPages(title:string,mode:'exact'|'startsWith'|'includes'='exact'):Promise<Id[]>{  ////let $$$CL_ret;
         let pages = await Promise.all(Object.keys(PAGES).map(async k=>(await BLOCKS(k))));
+        // console.info("ALL BLOCKS LOADED FOR SEARCH: ",JSON.stringify(_BLOCKS));
         if(mode=='exact'){
             return pages.filter(p=>p.pageTitle == title).map(p=>p.id);
         }else if(mode=='startsWith'){
@@ -155,3 +162,6 @@ const BlkFn = {
     },
 
 }
+
+
+

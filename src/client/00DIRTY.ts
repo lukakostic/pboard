@@ -1,52 +1,34 @@
-type _DIRTY_Entry = [string,Id|undefined,false|undefined];
+type _DIRTY_Entry = [string,Id|undefined,boolean];
 var DIRTY = {
     _ : [] as _DIRTY_Entry[],
     error : null as null|Error,
 
 
-    mark(singleton:string,id?:any,isDeleted:false|undefined=false) :void{
+    mark(singleton:string,id?:any,isDeleted=false) :void{
         // check if user didnt make mistake in strEval string: 
         try{eval(this.evalStringResolve(singleton,id));}catch(e){throw Error("Eval cant find object "+singleton+" id "+id+". :"+e);}
-    
-        while(true){ //remove same or longer/more-specific already marked  (["BLOCKS",1] should shadow ["BLOCKS",1,2,3] as its more general)
-            
-            for(let i = 0; i<this._.length;i++){
-                if(this._[i][0] == singleton){
-                    if(id!==undefined && this._[i][1]===undefined) return; //theyre more specific than us!
-                    if((id===this._[i][1]) || (this._[i][1]!==undefined && id===undefined)){
-                        this._.splice(i,1);
-                        break;
-                    }
-                }
-            }
-            // let idx = this.findAnyMatch(singleton,id);
-            // if(idx==-1) break;
-            // if(id===undefined && this._[idx][1]!==undefined)
-            // // if(this._[idx].length>strEval.length) // we are less specific than existing, delete existing
-            //     this._.splice(idx,1);
-            // else if(this._[idx][id] === id)
-            // // else if(this._[idx].length==strEval.length && this._[idx][1] == strEval[1])
-            //     return;  // exact copy of us is already saved. quit.
-            // else return; // its actually less specific than us!! we should quit.
-        }
+        
+        const require_id = ["_BLOCKS","_TAGS"];
+        if(require_id.includes(singleton) && id===undefined) throw Error(`${singleton} requires an ID but none provided.`);
+        if(require_id.includes(singleton)==false && id!==undefined) throw Error(`${singleton} doesnt support an ID but id '${id}' was provided.`);
+
+        this._ = this._.filter(p=>!(p[0]==singleton && p[1]==id));// && (isDeleted?(p[2]==true):(p[2]!=true))));
+        //remove all which have same singleton and id.    
+        // for(let i = this._.length-1; i>=0;i--){
+        //         if(singleton == this._[i][0]){
+        //             if(id===this._[i][1])
+        //                 this._.splice(i,1);
+        //             // if(id!==undefined && this._[i][1]===undefined) return; //theyre more specific than us!
+        //             // if((id===this._[i][1]) || (this._[i][1]!==undefined && id===undefined)){
+        //             //     this._.splice(i,1);
+        //             //     break;
+        //             // }
+        //         }
+        //     }
+        
         this._.push([singleton,id,isDeleted]);
+        // console.error("Marked: ",[singleton,id,isDeleted]);
     },
-    // findAnyMatch(singleton:string,id?:any){
-    //     for(let i = 0; i<this._.length;i++){
-    //         if(this._[i][0] == singleton){
-    //             //if(this._[i][1]===undefined)
-    //                 return i;
-    //         }
-    //         // let len = this._[i].length; if(len>strEval.length) len=strEval.length;
-    //         // let matchesAll = true;
-    //         // for(let j=0;j<len;j++){
-    //         //     if(this._[i][j] != strEval[j])
-    //         //         matchesAll = false;
-    //         // }
-    //         // if(matchesAll) return i;
-    //     }
-    //     return -1;
-    // },
     evalStringResolve(singleton:string,id?:any):string{
         let finalEvalStr = singleton;
         if(id!==undefined){
@@ -56,15 +38,6 @@ var DIRTY = {
         return finalEvalStr;
     }
 };
-
-// function unmark_DIRTY(strEval:[string,...any]) :void{
-//     if(_DIRTY[strEval])
-//         delete _DIRTY[strEval];
-//}
-/*async function set(path:_AttrPath,value:any){
-    // path=AttrPath.parse(path);
-    return (await rpc(`server_set`,path,value));
-}*/
 
 /**
  * Like a normal array but it mocks pop,push,splice functions, 
@@ -86,7 +59,7 @@ class ProxyArraySetter_NO{
         }else arr = existingArray;
         let p = new ProxyArraySetter(obj,field);
         Object.assign(arr,p);
-        return Object.setPrototypeOf(arr,ProxyArraySetter.prototype) as any[];
+        return ApplyClass(arr,ProxyArraySetter) as any[];
     }
     push(...items:any){
         let r = Array.prototype.push.apply(this,items);
@@ -107,3 +80,4 @@ class ProxyArraySetter_NO{
 */
 /** same as array. */
 //declare type TProxyArraySetter_NO<T> = T[];
+

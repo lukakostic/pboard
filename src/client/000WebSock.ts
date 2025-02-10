@@ -7,12 +7,7 @@ var Server = {
 new Promise((resolve, reject) => {
     WebSock.onopen(()=>resolve());
 });*/
-    /*
-    MsgType:{
-        saveAll:"saveAll", //data:null
-        load:"load", //data: attrSelector[]
-        eval:"eval", //code as string
-    },*/
+
     __MsgQueue : [] as {n:string,d?:any,cb:Function}[], // 
 // let msgId = 0;
 // msg: {text:null,cb:null}         //
@@ -52,13 +47,14 @@ Server.__WebSock.onmessage = (event) => {
     let dataTxt = event.data as string;
     console.log("websock recv:",dataTxt);
     let data;
-    if(dataTxt.startsWith("error")){
-        data = new Error(JSON_Deserialize(dataTxt.substring("error".length)));
-    }else{
+    // if(dataTxt.startsWith("error")){
+    //     data = new Error(JSON_Deserialize(dataTxt.substring("error".length)));
+    // }else{
         data = JSON_Deserialize(dataTxt);
-    }
+    // }
     m.cb(data);
     // console.log(event.data);
 };
 
 // WebSock.send("Here's some text that the server is urgently awaiting!");
+

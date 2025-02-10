@@ -6,10 +6,10 @@ bash ./deleteAll.sh
 
 #bash ./src_buildSys/execute.sh    ### ne treba nam vise codegen
 
-(cat -s ./src/*.{ts,js} ./src/client/*.{ts,js} > ./built/client/CLIENT.ts ;\
+(cat -s ./src/*.{ts,js} ./src/client/*.{ts,js} ./src/client/*/*.{ts,js} ./src/client/*/*/*.{ts,js} > ./built/client/CLIENT.ts ;\
 npx swc ./built/client/CLIENT.ts -o ./built/client/CLIENT.js ) &
 
-(cat -s ./src/*.{ts,js} ./src/server/*.{ts,js} > ./built/server/SERVER.ts ;\
+(cat -s ./src/*.{ts,js} ./src/server/*.{ts,js} ./src/server/*/*.{ts,js} ./src/server/*/*/*.{ts,js} > ./built/server/SERVER.ts ;\
 npx swc ./built/server/SERVER.ts -o ./built/server/SERVER.js ) &
 
 
