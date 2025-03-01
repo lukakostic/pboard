@@ -1,5 +1,5 @@
 type _DIRTY_Entry = [string,Id|undefined,boolean];
-var DIRTY = {
+const DIRTY = {
     _ : [] as _DIRTY_Entry[],
     error : null as null|Error,
 
@@ -13,18 +13,6 @@ var DIRTY = {
         if(require_id.includes(singleton)==false && id!==undefined) throw Error(`${singleton} doesnt support an ID but id '${id}' was provided.`);
 
         this._ = this._.filter(p=>!(p[0]==singleton && p[1]==id));// && (isDeleted?(p[2]==true):(p[2]!=true))));
-        //remove all which have same singleton and id.    
-        // for(let i = this._.length-1; i>=0;i--){
-        //         if(singleton == this._[i][0]){
-        //             if(id===this._[i][1])
-        //                 this._.splice(i,1);
-        //             // if(id!==undefined && this._[i][1]===undefined) return; //theyre more specific than us!
-        //             // if((id===this._[i][1]) || (this._[i][1]!==undefined && id===undefined)){
-        //             //     this._.splice(i,1);
-        //             //     break;
-        //             // }
-        //         }
-        //     }
         
         this._.push([singleton,id,isDeleted]);
         // console.error("Marked: ",[singleton,id,isDeleted]);
@@ -38,6 +26,7 @@ var DIRTY = {
         return finalEvalStr;
     }
 };
+
 
 /**
  * Like a normal array but it mocks pop,push,splice functions, 
@@ -81,3 +70,4 @@ class ProxyArraySetter_NO{
 /** same as array. */
 //declare type TProxyArraySetter_NO<T> = T[];
 
+  

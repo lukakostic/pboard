@@ -1,6 +1,6 @@
 
 type ServerMsg = {n:string,d?:any,cb?:Function}; //n=name
-var Server = {
+const Server = {
     __WebSock : new WebSocket("ws://localhost:9020"),
     __SockOpen : false,
 /*

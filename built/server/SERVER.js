@@ -253,7 +253,6 @@ const CMsg_backup = _MakeMsg(Msg_backup);
 import { serveDirWithTs } from "jsr:@ayame113/ts-serve";
 //https://github.com/ayame113/ts-serve
 import * as fs from "jsr:@std/fs";
-//declare var Deno : any;
 const FILESPATH = `../FILES`; // we are in built/   so go up once.
 const FILE = {
     PROJECT: `${FILESPATH}/PROJECT`,

@@ -32,31 +32,48 @@ async function selectBlock(b:Block_Visual|null,editText:boolean|null=null){
         else
             selected_block = null;
 
-        if(editText || (editText===null && inTextEditMode)){
-            inTextEditMode = true;
-            if(document.activeElement != b.editor!.e){
-                if(document.activeElement)
-                    (document.activeElement! as HTMLElement).blur();    
-                FocusElement(selected_block!.editor!.e);
-            }
-            // console.log('focusing e')
-        }else{
-            inTextEditMode = false;
-            if(document.activeElement != b.el!){
-                if(document.activeElement)
-                    (document.activeElement! as HTMLElement).blur();
+        if(selected_block != null){
+            if(editText || (editText===null && inTextEditMode)){
+                inTextEditMode = true;    
+                FocusElement(selected_block!.editor_inner_el()!);
+            }else{
+                inTextEditMode = false;
                 FocusElement(selected_block!.el!);
             }
-            // console.log('focusing el')
         }
         updateSelectionVisual();
+        resolve(null);
     },2)));
 }
 
 function FocusElement(el:HTMLElement){
+    /*
+    Check if currently active element is already "el" or some child of el. If so, return.
+    Else, blur currently active, and focus to el instead.
+    */console.log("FOCUS",el);
+    if(document.activeElement){
+        if(document.activeElement == el)
+            return;
+
+        if(el.contains(document.activeElement)){
+            // is textbox selected?
+            if(selected_block!.editor_inner_el()!.contains(document.activeElement)){
+                if(inTextEditMode){
+                    return; // its ok to select it
+                }
+                else
+                {} // blur it!
+            }
+        }
+        
+        (document.activeElement! as HTMLElement).blur();
+    }
+    
     // el.dispatchEvent(new FocusEvent("focus"));
     // console.error("FOCUSING ",el);
     el.focus();
+
+
 
     
 }

@@ -13,13 +13,18 @@
    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet"> -->
     
     <script src="/external/LEE.js"></script>
+    <script src="/external/tailwind.js"></script>
     <!-- <script src="external/SupaJson.js"></script> -->
     
     <!-- https://unpkg.com/tiny-markdown-editor/dist/tiny-mde.min.js -->
-    <script src="/external/tiny-mde.min.js"></script>
-    <link rel="stylesheet" type="text/css" href="/external/tiny-mde.min.css"/>
     <!-- href="https://unpkg.com/tiny-markdown-editor/dist/tiny-mde.min.css" -->
-  
+    <!--
+      <script src="/external/tiny-mde.min.js"></script>
+      <link rel="stylesheet" type="text/css" href="/external/tiny-mde.min.css"/>
+    -->
+    <link href="/external/quill.snow.css" rel="stylesheet" />
+    <script src="/external/quill.js"></script>
+    
 </head>
 <body>
   <style>
@@ -169,11 +174,12 @@
             line-height: 5px;
             height: fit-content;
         }
-        div.editor.TinyMDE{
+        div.ql-editor{
           /* padding:1px;
           padding-left:3px;
           padding-right: 3px; */
           padding: 1px 3px;
+          background-color: rgba(255, 255, 255, 0.9);
         }
     </style>
     <style id="highlighterStyle"></style> <!-- contents set at runtime -->
@@ -185,20 +191,5 @@
     </div>
 
     <script src="/client/CLIENT.js"></script>
-    
-  <!--
-    <script type="module" src="../Serializer.js"></script>
-    <script type="module" src="../Common.js"></script>
-    <script type="module" src="../AttrPath.js"></script>
-    <script type="module" src="WebSock.js"></script>
-    <script type="module" src="client.js"></script>
-    <script type="module" src="Blocks.js"></script>
-    <script type="module" src="Tag.js"></script>
-    <script type="module" src="View.js"></script>
-    <script type="module" src="View_Blocks_Visual.js"></script>
-    <script type="module" src="View_Page_Visual.js"></script>
-    <script type="module" src="Searcher.js"></script>
-    <script type="module" src="init.js"></script>
-  -->
 
 </body>

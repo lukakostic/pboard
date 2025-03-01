@@ -14,6 +14,23 @@ class Page_Visual{
 
         this.childrenHolderEl = null as any;
     }
+
+    setDocumentURI(){
+        // change document url to have hash "#?pageId=<pageId>"
+        // let url = new URL(document.location.href);
+        // url.hash = "#?pageId="+this.pageId;
+        // history.pushState({}, '', url.href);
+        document.location.hash = "?pageId="+this.pageId;
+    }
+    getDocumentURI(){
+        let url = new URL(document.location.href);
+        let pageId = url.hash.match(/pageId=(\w+)/);
+        if(pageId){
+            this.pageId = pageId[1];
+            return this.pageId;
+        }
+        return null;
+    }
     page():Block{
         return _BLOCKS[this.pageId]!;
     }
@@ -82,7 +99,7 @@ class Page_Visual{
         await this.makePage(maxUncollapseDepth);
     }
     async makePage(maxUncollapseDepth=0){
-        if(this.alreadyRendered) throw new Error("Page is being made again. Why?");
+        //if(this.alreadyRendered) throw new Error("Page is being made again. Why?");
         this.alreadyRendered = true;
 
         const p = this.page();

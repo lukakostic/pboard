@@ -25,7 +25,7 @@ type TCMsg_loadInitial = null;
 type TSMsg_loadInitial = Error|false|{ // false if nothing already saved (fresh install)
     PROJECT : JSONstr<ProjectClass>,
     SEARCH_STATISTICS : JSONstr<SearchStatistics>,
-    PAGES : JSONstr<TPAGES>,
+    PAGES : JSONstr<typeof PAGES>,
 
     ids_BLOCKS : Id[],
     ids_TAGS : Id[],

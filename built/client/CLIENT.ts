@@ -294,7 +294,7 @@ type TCMsg_loadInitial = null;
 type TSMsg_loadInitial = Error|false|{ // false if nothing already saved (fresh install)
     PROJECT : JSONstr<ProjectClass>,
     SEARCH_STATISTICS : JSONstr<SearchStatistics>,
-    PAGES : JSONstr<TPAGES>,
+    PAGES : JSONstr<typeof PAGES>,
 
     ids_BLOCKS : Id[],
     ids_TAGS : Id[],
@@ -319,21 +319,197 @@ const CMsg_backup = _MakeMsg<TCMsg_backup,TSMsg_backup>(Msg_backup);
 
 
 //######################
-// File: client/0000DEBUG.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/0000DEBUG.ts
+// File: client/0/BlkFn.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0/BlkFn.ts
 //######################
 
-var DEBUG = true;
+//let $CL = typeof($IS_CLIENT$)!==undefined; // true for client, false on server
+/*
+let $$$CL_ret ->  call fn and return its return (do nothing)
+let $$$CL_clone -> call fn, copy function body (rename BLOCK to _BLOCK etc.)
+let $$$CL_diff -> call fn, apply returned diff
+let $$$CL_local -> copy the function body, insert rpc call into $CL_rpc if exists.
+$$$CL_rpc -> insert the "awake rpc(..)" call here
+
+## why like this? 
+Well i dont want the server to return a Diff for everything ($CL_diff)
+- if i hold only 1 block why should i care about 99 other blocks in diff, and i dont want the server to have to hold "which blocks does each client hold"
+I can also run the code locally too ($CL_clone)
+- but thats error prone if i change code on server but forget on client
+
+So if i have this build-time way of saying "clone this fn, diff this fn" then i get all benefits.
+*/
+
+const BlkFn = {
+    // DeleteBlocks_unsafe(ids:Id[]):boolean{
+    //     /*
+    //     delete blocks without checking refCount (if referenced from other blocks)
+    //     */
+    //     for(let i=0,l=ids.length;i<l;i++){
+    //         if(PAGES[ids[i]]) delete PAGES[ids[i]];
+    //         delete BLOCKS[ids[i]];
+    //     }
+    //     return true;
+    // },
+    async RemoveTagFromBlock(blockId:Id,tagId:Id)
+    { 
+        const t = await TAGS(tagId,0);
+        const ti = t.blocks.indexOf(blockId);
+        if(ti!=-1){
+            t.blocks.splice(ti,1); //remove block from tag
+            t.DIRTY();
+        }
+        const b = await BLOCKS(blockId,0);
+        const bi = b.tags.indexOf(tagId);
+        if(bi!=-1){
+            b.tags.splice(bi,1); //remove tag from block
+            b.DIRTY();
+        }
+    },
+    async RemoveAllTagsFromBlock(blockId:Id)
+    {  ////let $$$CL_clone;
+        const b = await BLOCKS(blockId,0);          ////if($CL&&!b)return;
+        for(let i = 0; i<b.tags.length; i++){
+            const t = await TAGS(b.tags[i],0);          ////if($CL&&!t)continue;
+            t.blocks.splice(t.blocks.indexOf(blockId),1); //remove block from tag
+            t.DIRTY();
+        }
+        b.tags = [];//    b.tags.splice(b.tags.indexOf(tagId),1); //remove tag from block
+        b.DIRTY();
+    },
+    async HasTagBlock(tagId:Id,blockId:Id/*,  $CL=false*/):Promise<boolean>
+    {  //let $$$CL_local;
+        //if(!$CL) return TAGS[tagId].blocks.indexOf(blockId)!=-1;
+        //if($CL){
+            if(_TAGS[tagId]) return _TAGS[tagId].blocks.indexOf(blockId)!=-1;
+            if(_BLOCKS[blockId]) return _BLOCKS[blockId].tags.indexOf(tagId)!=-1;
+            return (await TAGS(tagId)).blocks.indexOf(blockId)!=-1;
+            //return $$$CL_rpc;
+        //}
+    },
+    async TagBlock(tagId:Id,blockId:Id)/*:boolean*/
+    {  //let $$$CL_clone;
+        if(await this.HasTagBlock(tagId,blockId/*, $CL*/)) return;// false;
+        (await TAGS(tagId)).blocks.push(blockId);
+        _TAGS[tagId]!.DIRTY();
+        (await BLOCKS(blockId)).tags.push(tagId);
+        _BLOCKS[blockId]!.DIRTY();
+        // return true;
+    },
+    async DeleteBlockOnce(id:Id)
+    {  ////let $$$CL_diff;
+        if(_BLOCKS[id]==undefined) return false;
+        const b = await BLOCKS(id,0);
+        // console.error("delete once",id,b.refCount);
+        b.refCount--;
+        
+        if(b.refCount>0){ b.DIRTY(); return false; }// false; //not getting fully deleted
+        //deleting block fully
+        if(b.refCount==0)
+            await BlkFn.DeleteBlockEverywhere(id);
+        
+        return true;// true; //got fully deleted
+    },
+    async DeleteBlockEverywhere(id:Id)
+    {  ////let $$$CL_diff;
+        if(_BLOCKS[id]==undefined) return;
+        const b = await BLOCKS(id,0);
+        b.refCount=0;
+        for(let i = 0; i<b.children.length;i++){
+            // console.error("delete everywhere ",id,"child:",b.children[i],"i"+i,b.children.length);
+            if(await this.DeleteBlockOnce(b.children[i])) i--;
+        }
+        await this.RemoveAllTagsFromBlock(id);
+        if(PAGES[id]){ delete PAGES[id]; DIRTY.mark("PAGES"); }
+        delete _BLOCKS[id];
+        Block.DIRTY_deletedS(id);
+        // Search all blocks and all tags. Remove self from children.
+        
+        let allBlocks = Object.keys(_BLOCKS);
+        for(let i = 0; i<allBlocks.length;i++){
+            if(_BLOCKS[allBlocks[i]]==undefined) continue;
+            const b2 = await BLOCKS(allBlocks[i],0);
+            if(b2.children.includes(id)){
+                b2.children = b2.children.filter((x:any)=>(x!=id));
+                b2.DIRTY();
+            }
+            WARN("We arent modifying array in-place (for performance), caller may hold old reference");
+            /*
+            let oc = b2.children;
+            let nc = oc.filter((x:any)=>(x!=id));
+            if(nc.length != oc.length){
+                oc.splice(0,oc.length,...nc);    // in-place set new array values
+            }*/
+        }
+        /*
+        let allTags = Object.keys(_TAGS);
+        for(let i = 0; i<allTags.length;i++){
+            const t2 = await TAGS(allTags[i]);
+            t2.blocks = t2.blocks.filter((x:any)=>(x!=id));
+            t2.DIRTY();
+            WARN("We arent modifying array in-place (for performance), caller may hold old reference");
+        }*/
+    },
+    async InsertBlockChild(parent:Id, child:Id, index:number )/*:Id[]*/
+    {  ////let $$$CL_clone;
+        const p = await BLOCKS(parent);                 ////if($CL&&!p)return;
+        const l = p.children;
+        if(index >= l.length || index<0){
+            l.push(child);
+        }else{
+            l.splice(index,0,child);
+        }
+        p.DIRTY();
+        // return l;
+    },
+    async SearchPages(title:string,mode:'exact'|'startsWith'|'includes'='exact'):Promise<Id[]>
+    {  ////let $$$CL_ret;
+        let pages = await Promise.all(Object.keys(PAGES).map(async k=>(await BLOCKS(k))));
+        // console.info("ALL BLOCKS LOADED FOR SEARCH: ",JSON.stringify(_BLOCKS));
+        if(mode=='exact'){
+            return pages.filter(p=>p.pageTitle == title).map(p=>p.id);
+        }else if(mode=='startsWith'){
+            return pages.filter(p=>p.pageTitle?.startsWith(title)).map(p=>p.id);
+        }else if(mode=='includes'){
+            return pages.filter(p=>p.pageTitle?.includes(title)).map(p=>p.id);
+        }
+        return [];
+    },
+    async SearchTags(title:string,mode:'exact'|'startsWith'|'includes'='exact'):Promise<Id[]>
+    {  //let $$$CL_ret;
+        let pages = await Promise.all(Object.keys(_TAGS).map(async k => await TAGS(k,0)));//Object.values(TAGS);//.map(k=>BLOCKS[k]);
+        if(mode=='exact'){
+            return pages.filter(p=>p.name == title).map(p=>p.id);
+        }else if(mode=='startsWith'){
+            return pages.filter(p=>p.name?.startsWith(title)).map(p=>p.id);
+        }else if(mode=='includes'){
+            return pages.filter(p=>p.name?.includes(title)).map(p=>p.id);
+        }
+        return [];
+    },
+
+}
+
+
 
 
 
 //######################
-// File: client/00DIRTY.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/00DIRTY.ts
+// File: client/0/DEBUG.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0/DEBUG.ts
+//######################
+
+const DEBUG = true;
+
+
+
+//######################
+// File: client/0/DIRTY.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0/DIRTY.ts
 //######################
 
 type _DIRTY_Entry = [string,Id|undefined,boolean];
-var DIRTY = {
+const DIRTY = {
     _ : [] as _DIRTY_Entry[],
     error : null as null|Error,
 
@@ -347,18 +523,6 @@ var DIRTY = {
         if(require_id.includes(singleton)==false && id!==undefined) throw Error(`${singleton} doesnt support an ID but id '${id}' was provided.`);
 
         this._ = this._.filter(p=>!(p[0]==singleton && p[1]==id));// && (isDeleted?(p[2]==true):(p[2]!=true))));
-        //remove all which have same singleton and id.    
-        // for(let i = this._.length-1; i>=0;i--){
-        //         if(singleton == this._[i][0]){
-        //             if(id===this._[i][1])
-        //                 this._.splice(i,1);
-        //             // if(id!==undefined && this._[i][1]===undefined) return; //theyre more specific than us!
-        //             // if((id===this._[i][1]) || (this._[i][1]!==undefined && id===undefined)){
-        //             //     this._.splice(i,1);
-        //             //     break;
-        //             // }
-        //         }
-        //     }
         
         this._.push([singleton,id,isDeleted]);
         // console.error("Marked: ",[singleton,id,isDeleted]);
@@ -372,6 +536,7 @@ var DIRTY = {
         return finalEvalStr;
     }
 };
+
 
 /**
  * Like a normal array but it mocks pop,push,splice functions, 
@@ -415,11 +580,11 @@ class ProxyArraySetter_NO{
 /** same as array. */
 //declare type TProxyArraySetter_NO<T> = T[];
 
-
+  
 
 //######################
-// File: client/0000HELP.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/0000HELP.ts
+// File: client/0/HELP.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0/HELP.ts
 //######################
 
 
@@ -481,8 +646,8 @@ Delete : delete block
 
 
 //######################
-// File: client/0Preferences.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/0Preferences.ts
+// File: client/0/Preferences.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0/Preferences.ts
 //######################
 
 // class PreferencesClass {
@@ -495,8 +660,8 @@ Delete : delete block
 
 
 //######################
-// File: client/0Project.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/0Project.ts
+// File: client/0/PROJECT.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0/PROJECT.ts
 //######################
 
 class ProjectClass {
@@ -533,151 +698,13 @@ RegClass(ProjectClass);
 
 
 //######################
-// File: client/0Searcher.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/0Searcher.ts
-//######################
-
-
-declare var LEEJS : any;
-
-const SearcherMode = {
-    __at0_pages:1, // [0]1 = pages
-    __at0_tags:2,  // [0]2 = tags
-    __at1_find:0,  // [1]0 = find
-    __at1_add:1,   // [1]1 = add
-    pages_find : [1,0],
-    tags_find : [2,0],
-    tags_add : [2,1]
-}
-class Searcher {
-    visible:boolean;
-    input:HTMLInputElement;
-    finder:HTMLElement;
-    direct:HTMLElement;recent:HTMLElement;
-
-    directs:string[];
-    recents:string[];
-    mode:  null|any;
-
-    constructor(){
-        this.visible = true;
-        this.directs = [];
-        this.recents = [];
-        this.mode = null;
-        ///   MakeVisible {
-        let L = LEEJS;
-        // let inp,direct,recent;
-        // div($I`window`,[
-          this.finder = L.div(L.$I`finder`,[
-            this.input = L.input(L.$I`finderSearch`,{type:"text"})(),
-            L.div(L.$I`finderSuggestions`,{
-                $bind:this, $click:this.__ItemClick
-            },[
-                this.direct = L.div(L.$I`direct`,[
-                    L.div("Item"),L.div("Item"),L.div("Item"),
-                ])(),
-                this.recent = L.div(L.$I`recent`,[
-                    L.div("Item"),L.div("Item"),
-                ])(),
-            ])
-          ]).a('#finderRoot');
-        // ]);
-        ///   MakeVisible }
-
-        this.toggleVisible(false);
-    }
-    toggleVisible(setValue?:boolean){
-        if(setValue!==undefined)
-            this.visible = setValue;
-        else this.visible = !this.visible;
-        
-        this.finder.style.display = this.visible?'block':'none';
-    }
-    async Search(){
-        let last = this.input.value.trim();
-        if(last.indexOf(',')!=-1)
-            last = last.split(',').at(-1)!.trim();
-        if(this.mode[0]==SearcherMode.__at0_pages){
-            this.directs = await BlkFn.SearchPages(last,'includes');
-        }else if(this.mode[0]==SearcherMode.__at0_tags){
-            this.directs = await BlkFn.SearchTags(last,'includes');
-        }
-        // this.directs = TAGS.filter(t=>t.name.includes(this.input.value));
-    }
-    async Submit(){
-        let items = this.input.value.trim().split(',').map(v=>v.trim());
-        if(this.mode[0]==SearcherMode.__at0_pages){
-        
-        }else if(this.mode[0]==SearcherMode.__at0_tags){
-        
-        }
-    }
-    AddRecent(){
-
-    }
-    ItemSelected(){
-
-    }
-    __ItemClick(event:MouseEvent){
-        let item:HTMLElement = event.target as HTMLElement;
-        if(item == this.recent || item == this.direct) return;
-        
-    }
-}
-var SEARCHER = (new Searcher());
-
-class SearchStatistics{
-
-    maxRecents : 20;
-    recentlySearched_Pages: [Id,string][];
-    recentlySearched_Tags: [Id,string][];
-    recentlyVisited_Pages: [Id,string][];
-    recentlyAdded_Tags: [Id,string][];
-
-    constructor(){
-        this.maxRecents = 20; 
-        this.recentlySearched_Pages = [];
-        this.recentlySearched_Tags = [];
-        this.recentlyVisited_Pages = [];
-        this.recentlyAdded_Tags = [];
-    }
-
-    DIRTY(){DIRTY.mark("SEARCH_STATISTICS");}
-        
-
-    
-    push_list(list:[Id,string][],id_name:[Id,string]){
-        list.splice(0,0,id_name); // add as first
-        if(list.length>this.maxRecents) // limit max length
-            list.splice(this.maxRecents,list.length-this.maxRecents);
-        this.DIRTY();
-    }
-    async recentlySearched_Pages_push(id:Id){
-        this.push_list(this.recentlySearched_Pages,[id,(await BLOCKS(id)).pageTitle!]);
-    }
-    async recentlySearched_Tags_push(id:Id){
-        this.push_list(this.recentlySearched_Tags,[id,await (await TAGS(id)).getName()]);
-    }
-    async recentlyVisited_Pages_push(id:Id){
-        this.push_list(this.recentlyVisited_Pages,[id,(await BLOCKS(id)).pageTitle!]);
-    }
-    async recentlyAdded_Tags_push(id:Id){
-        this.push_list(this.recentlyAdded_Tags,[id,await (await TAGS(id)).getName()]);
-    }
-}
-RegClass(SearchStatistics);
-
-
-
-
-//######################
-// File: client/000WebSock.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/000WebSock.ts
+// File: client/0/WebSock.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0/WebSock.ts
 //######################
 
 
 type ServerMsg = {n:string,d?:any,cb?:Function}; //n=name
-var Server = {
+const Server = {
     __WebSock : new WebSocket("ws://localhost:9020"),
     __SockOpen : false,
 /*
@@ -738,504 +765,8 @@ Server.__WebSock.onmessage = (event) => {
 
 
 //######################
-// File: client/1BlkFn_server.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/1BlkFn_server.ts
-//######################
-
-//let $CL = typeof($IS_CLIENT$)!==undefined; // true for client, false on server
-/*
-let $$$CL_ret ->  call fn and return its return (do nothing)
-let $$$CL_clone -> call fn, copy function body (rename BLOCK to _BLOCK etc.)
-let $$$CL_diff -> call fn, apply returned diff
-let $$$CL_local -> copy the function body, insert rpc call into $CL_rpc if exists.
-$$$CL_rpc -> insert the "awake rpc(..)" call here
-
-## why like this? 
-Well i dont want the server to return a Diff for everything ($CL_diff)
-- if i hold only 1 block why should i care about 99 other blocks in diff, and i dont want the server to have to hold "which blocks does each client hold"
-I can also run the code locally too ($CL_clone)
-- but thats error prone if i change code on server but forget on client
-
-So if i have this build-time way of saying "clone this fn, diff this fn" then i get all benefits.
-*/
-
-const BlkFn = {
-    // DeleteBlocks_unsafe(ids:Id[]):boolean{
-    //     /*
-    //     delete blocks without checking refCount (if referenced from other blocks)
-    //     */
-    //     for(let i=0,l=ids.length;i<l;i++){
-    //         if(PAGES[ids[i]]) delete PAGES[ids[i]];
-    //         delete BLOCKS[ids[i]];
-    //     }
-    //     return true;
-    // },
-    async RemoveTagFromBlock(blockId:Id,tagId:Id){ 
-        const t = await TAGS(tagId,0);
-        t.blocks.splice(t.blocks.indexOf(blockId),1); //remove block from tag
-        t.DIRTY();
-        const b = await BLOCKS(blockId,0);
-        b.tags.splice(b.tags.indexOf(tagId),1); //remove tag from block
-        b.DIRTY();
-    },
-    async RemoveAllTagsFromBlock(blockId:Id){  ////let $$$CL_clone;
-        const b = await BLOCKS(blockId,0);          ////if($CL&&!b)return;
-        for(let i = 0; i<b.tags.length; i++){
-            const t = await TAGS(b.tags[i],0);          ////if($CL&&!t)continue;
-            t.blocks.splice(t.blocks.indexOf(blockId),1); //remove block from tag
-            t.DIRTY();
-        }
-        b.tags = [];//    b.tags.splice(b.tags.indexOf(tagId),1); //remove tag from block
-        b.DIRTY();
-    },
-    async AddTagToBlock(blockId:Id,tagId:Id){
-        const b = await BLOCKS(blockId,0);
-        const t = await TAGS(tagId,0);
-        
-    },
-    async DeleteBlockOnce(id:Id){  ////let $$$CL_diff;
-        if(_BLOCKS[id]==undefined) return false;
-        const b = await BLOCKS(id,0);
-        // console.error("delete once",id,b.refCount);
-        b.refCount--;
-        
-        if(b.refCount>0){ b.DIRTY(); return false; }// false; //not getting fully deleted
-        //deleting block fully
-        if(b.refCount==0)
-            await BlkFn.DeleteBlockEverywhere(id);
-        
-        return true;// true; //got fully deleted
-    },
-    async DeleteBlockEverywhere(id:Id){  ////let $$$CL_diff;
-        if(_BLOCKS[id]==undefined) return;
-        const b = await BLOCKS(id,0);
-        b.refCount=0;
-        for(let i = 0; i<b.children.length;i++){
-            // console.error("delete everywhere ",id,"child:",b.children[i],"i"+i,b.children.length);
-            if(await this.DeleteBlockOnce(b.children[i])) i--;
-        }
-        await this.RemoveAllTagsFromBlock(id);
-        if(PAGES[id]){ delete PAGES[id]; DIRTY.mark("PAGES"); }
-        delete _BLOCKS[id];
-        Block.DIRTY_deletedS(id);
-        // Search all blocks and all tags. Remove self from children.
-        
-        let allBlocks = Object.keys(_BLOCKS);
-        for(let i = 0; i<allBlocks.length;i++){
-            if(_BLOCKS[allBlocks[i]]==undefined) continue;
-            const b2 = await BLOCKS(allBlocks[i],0);
-            if(b2.children.includes(id)){
-                b2.children = b2.children.filter((x:any)=>(x!=id));
-                b2.DIRTY();
-            }
-            WARN("We arent modifying array in-place (for performance), caller may hold old reference");
-            /*
-            let oc = b2.children;
-            let nc = oc.filter((x:any)=>(x!=id));
-            if(nc.length != oc.length){
-                oc.splice(0,oc.length,...nc);    // in-place set new array values
-            }*/
-        }
-        /*
-        let allTags = Object.keys(_TAGS);
-        for(let i = 0; i<allTags.length;i++){
-            const t2 = await TAGS(allTags[i]);
-            t2.blocks = t2.blocks.filter((x:any)=>(x!=id));
-            t2.DIRTY();
-            WARN("We arent modifying array in-place (for performance), caller may hold old reference");
-        }*/
-    },
-    async InsertBlockChild(parent:Id, child:Id, index:number )/*:Id[]*/{  ////let $$$CL_clone;
-        const p = await BLOCKS(parent);                 ////if($CL&&!p)return;
-        const l = p.children;
-        if(index >= l.length || index<0){
-            l.push(child);
-        }else{
-            l.splice(index,0,child);
-        }
-        p.DIRTY();
-        // return l;
-    },
-    async SearchPages(title:string,mode:'exact'|'startsWith'|'includes'='exact'):Promise<Id[]>{  ////let $$$CL_ret;
-        let pages = await Promise.all(Object.keys(PAGES).map(async k=>(await BLOCKS(k))));
-        // console.info("ALL BLOCKS LOADED FOR SEARCH: ",JSON.stringify(_BLOCKS));
-        if(mode=='exact'){
-            return pages.filter(p=>p.pageTitle == title).map(p=>p.id);
-        }else if(mode=='startsWith'){
-            return pages.filter(p=>p.pageTitle?.startsWith(title)).map(p=>p.id);
-        }else if(mode=='includes'){
-            return pages.filter(p=>p.pageTitle?.includes(title)).map(p=>p.id);
-        }
-        return [];
-    },
-    async SearchTags(title:string,mode:'exact'|'startsWith'|'includes'='exact'):Promise<Id[]>{  //let $$$CL_ret;
-        let pages = await Promise.all(Object.keys(_TAGS).map(async k => await TAGS(k)));//Object.values(TAGS);//.map(k=>BLOCKS[k]);
-        if(mode=='exact'){
-            return pages.filter(p=>p.name == title).map(p=>p.id);
-        }else if(mode=='startsWith'){
-            return pages.filter(p=>p.name?.startsWith(title)).map(p=>p.id);
-        }else if(mode=='includes'){
-            return pages.filter(p=>p.name?.includes(title)).map(p=>p.id);
-        }
-        return [];
-    },
-    async HasTagBlock(tagId:Id,blockId:Id/*,  $CL=false*/):Promise<boolean>{  //let $$$CL_local;
-        //if(!$CL) return TAGS[tagId].blocks.indexOf(blockId)!=-1;
-        //if($CL){
-            if(_TAGS[tagId]) return _TAGS[tagId].blocks.indexOf(blockId)!=-1;
-            if(_BLOCKS[blockId]) return _BLOCKS[blockId].tags.indexOf(tagId)!=-1;
-            return (await TAGS(tagId)).blocks.indexOf(blockId)!=-1;
-            //return $$$CL_rpc;
-        //}
-    },
-    async TagBlock(tagId:Id,blockId:Id)/*:boolean*/{  //let $$$CL_clone;
-        if(await this.HasTagBlock(tagId,blockId/*, $CL*/)) return;// false;
-        (await TAGS(tagId)).blocks.push(blockId);
-        _TAGS[tagId]!.DIRTY();
-        (await BLOCKS(blockId)).tags.push(tagId);
-        _BLOCKS[blockId]!.DIRTY();
-        // return true;
-    },
-    async RemoveTagBlock(tagId:Id,blockId:Id)/*:boolean*/{   //let $$$CL_clone;
-        if(await this.HasTagBlock(tagId,blockId/*, $CL*/) == false) return;// false;
-        (await TAGS(tagId)).blocks.splice(_TAGS[tagId]!.blocks.indexOf(blockId),1);
-        (await BLOCKS(blockId)).tags.splice(_BLOCKS[blockId]!.tags.indexOf(tagId),1);
-        _TAGS[tagId]!.DIRTY();
-        _BLOCKS[blockId]!.DIRTY();
-        // return true;
-    },
-
-}
-
-
-
-
-
-//######################
-// File: client/1client.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/1client.ts
-//######################
-
-
-var PROJECT = new ProjectClass();
-var SEARCH_STATISTICS = new SearchStatistics();
-
-type TBLOCKSn = {[id:Id]:Block|null};
-var _BLOCKS : TBLOCKSn = {};  // all blocks
-async function BLOCKS( idx :Id , depth :number = 1 ):Promise<Block>{
-    if(_BLOCKS[idx]===null)
-        await loadBlock(idx,depth);
-    return _BLOCKS[idx]!;
-}
-
-type TPAGES = {[id:Id]:true};
-var PAGES : TPAGES = {}; //all pages
-
-type TTAGSn = {[id:Id]:Tag|null};
-var _TAGS : TTAGSn = {};  // all tags
-async function TAGS( idx :Id , depth :number = 1 ):Promise<Tag>{
-    if(_TAGS[idx]===null)
-        await loadTag(idx,depth);
-    return _TAGS[idx]!;
-}
-
-let autosaveInterval :number|null = null;
-
-/*
-async function LoadAll(){
-    TODO();
-    Server.sendMsg({n:Server.MsgType.loadAll,cb:((resp:any)=>{
-        throwIf(resp);
-
-        _TAGS = __Deserialize(resp._TAGS ?? {});
-        _BLOCKS = __Deserialize(resp._BLOCKS ?? {});
-    })});
-
-}*/
-async function ReLoadAllData(){
-    let newData = await rpc(`client_ReLoadAllData`,{
-        BLOCKS:_BLOCKS,
-        PAGES:PAGES,
-        TAGS:_TAGS,
-    });
-    _BLOCKS = newData.BLOCKS;
-    PAGES = newData.PAGES;
-    _TAGS = newData.TAGS;
-}
-
-async function rpc(code:string|Function, ...fnArgs:any):Promise<any>{
-    console.log("rpc:",code,fnArgs);
-    
-    if(typeof(code) == 'function')
-        code = `(${code}).apply(null,__Deserialize(${JSON_Serialize(fnArgs)}));`;
-    else if(typeof(code)=='string'){
-        code = `(${code}).apply(null,__Deserialize(${JSON_Serialize(fnArgs)}));`;
-    }
-    console.log("rpc after:",code);
-
-    const resp = await CMsg_eval({code});
-    console.log("rpc resp:",resp);
-    throwIf(resp);
-    return resp;
-}
-function throwIf(obj:any){
-    if(obj instanceof Error){
-        throw obj;
-    }
-}
-
-async function LoadInitial(){
-
-    /*
-    Load:  PROJECT , SEARCH_STATISTICS , PAGES
-    all ids for:  _BLOCKS, _TAGS
-    on demand objects for: _BLOCKS, _TAGS.
-    */
-    const resp = await CMsg_loadInitial(null);
-    console.log("LOAD INITIAL:",resp);
-    if(resp instanceof Error)
-        throw resp;
-    else if(resp === false){ // server has no saved state (fresh install) 
-
-    }else{
-        //let json = resp;//__Deserialize(resp);
-        PAGES =  JSON_Deserialize(resp.PAGES as any);
-        SEARCH_STATISTICS =  JSON_Deserialize(resp.SEARCH_STATISTICS as any);
-        PROJECT =  JSON_Deserialize(resp.PROJECT as any);   
-    
-        _BLOCKS = {};
-        // console.log("LOAD INITIAL:",JSON.stringify(resp.ids_BLOCKS));
-        resp.ids_BLOCKS.forEach(id=>_BLOCKS[id] = null);
-        _TAGS = {};
-        resp.ids_TAGS.forEach(id=>_TAGS[id] = null);
-        
-        console.log("LOAD INITIAL OVER:",PAGES,SEARCH_STATISTICS,PROJECT);
-        // console.log("LOAD INITIAL _BLOCKS:",JSON.stringify(_BLOCKS));
-    }
-}
-async function SaveAll(){
-    //    Server.sendMsg({n:Server.MsgType.saveAll,d:{TAGS:_TAGS,BLOCKS:_BLOCKS}});
-    if(DIRTY._.length==0 || DIRTY.error!==null){
-        if(DIRTY.error) throw DIRTY.error;
-        return;
-    }
-        
-    // send to server all dirty objects.
-    // most importantly also send the ""
-    const oldHash = PROJECT.running_change_hash;
-    if(oldHash == (new ProjectClass()).running_change_hash){ // initial save
-        SEARCH_STATISTICS.DIRTY(); 
-        PROJECT.DIRTY();
-        DIRTY.mark("PAGES");
-        // console.error("Initial save.");
-        // console.error(JSON.stringify(DIRTY._))
-    }
-
-    const newHash = PROJECT.genChangeHash();
-    
-    //let packet : TMsg_saveAll_C2S["d"] = {hash:oldChangeHash,data:[]};
-    let packet : TCMsg_saveAll__DataOrDeleted[] = [];
-    for(let i = DIRTY._.length-1; i >= 0; i--){
-        const p = DIRTY._[i];
-        // console.error(p);
-        if(p[2]){ // thing was deleted.
-            packet.push({path:[p[0],p[1]],deleted:true});
-        }else{
-            let evalStr = DIRTY.evalStringResolve(p[0],p[1]);
-            try{
-                packet.push({path:[p[0],p[1]],data:JSON_Serialize(eval(evalStr))!});
-            }catch(e){
-                DIRTY.error = e as Error;
-                throw e;
-            }
-        }
-        DIRTY._.splice(i,1);
-    }
-    const resp = await CMsg_saveAll({hash:oldHash,newHash,data:packet});
-    if(resp instanceof Error){
-        DIRTY.error = resp;
-        throw resp; // !!!!!!!!!!!!!!
-    }
-}
-
-async function Backup(){
-    let r = await CMsg_backup(null);
-    throwIf(r);
-}
-
-async function loadBlock(blockId:Id,depth:number) {
-    // path = AttrPath.parse(path);
-    console.log("Loading block:",blockId);
-    let newBLOCKS_partial = await CMsg_loadBlock({id:blockId,depth});//rpc(`client_loadBlock`,blockId,depth);
-    //throwIf(newBLOCKS_partial);
-    if(newBLOCKS_partial instanceof Error){throw newBLOCKS_partial}else
-    for(let key in newBLOCKS_partial){
-        console.log("Loading block id:",key);
-        _BLOCKS[key] = JSON_Deserialize( newBLOCKS_partial[key] );
-        console.info("Loaded block: ",key,_BLOCKS[key]);
-    }  
-}
-async function loadTag(blockId:Id,depth:number) {
-    TODO("LoadTag");
-    // path = AttrPath.parse(path);
-    console.log("Loading tag:",blockId);
-    let newBLOCKS_partial = await CMsg_loadTag({id:blockId,depth});//await rpc(`client_loadBlock`,blockId,depth);
-    //throwIf(newBLOCKS_partial);
-    if(newBLOCKS_partial instanceof Error){throw newBLOCKS_partial}else
-    for(let key in newBLOCKS_partial){
-        console.log("Loading tag id:",key);
-        _TAGS[key] = JSON_Deserialize( newBLOCKS_partial[key] );
-    }  
-}
-
-
-
-//######################
-// File: client/2Blocks.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/2Blocks.ts
-//######################
-
-
-
-class Block{
-    static _serializable_default = {text:"",children:[],tags:[],attribs:{},refCount:1,collapsed:false};
-
-    id:Id;
-    refCount:number;
-    
-    pageTitle?:string;
-    text:string;
-
-    children:Id[];
-    tags:Id[];
-    attribs:objectA;
-    collapsed: boolean;
-
-    constructor(){
-        this.id = "";
-        this.text = "";
-        this.refCount = 1;
-        this.children = [];
-        this.tags = [];
-        this.attribs = {};
-        this.collapsed = false;
-    }
-    
-    DIRTY(){this.validate();DIRTY.mark("_BLOCKS",this.id);}
-    DIRTY_deleted(){DIRTY.mark("_BLOCKS",this.id,true);}
-    static DIRTY_deletedS(id:Id){DIRTY.mark("_BLOCKS",id,true);}
-    validate(){} // nothing to validate. Maybe pageTitle cant be set if Block isnt in PAGES ?
-
-    static async new(text="",  waitServerSave=true):Promise<Block>{
-        let b = new Block();
-        _BLOCKS[b.id = PROJECT.genId()] = b;
-        b.text = text;
-        b.DIRTY();
-        if(waitServerSave)
-            await SaveAll();
-        return b;
-    }
-    static async newPage(title="" , waitServerSave=true):Promise<Block>{
-        let b = new Block();
-        _BLOCKS[b.id = PROJECT.genId()] = b;
-        PAGES[b.id] = true;
-        DIRTY.mark("PAGES");
-        b.pageTitle = title;
-        b.DIRTY();
-        if(waitServerSave)
-            await SaveAll();
-        return b;
-    }
-
-
-    async makeVisual(parentElement?:HTMLElement, maxUncollapseDepth=999){
-        let bv = (new Block_Visual(this, parentElement, this.collapsed)); // ignore collapsed since we will call updateAll anyways.
-        await bv.updateAll(maxUncollapseDepth);
-        return bv;
-    }
-
-};
-RegClass(Block);
-
-
-
-
-//######################
-// File: client/3Tag.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/3Tag.ts
-//######################
-
-
-class Tag{ 
-    static _serializable_default = {attribs:{},parentTagId:"",childrenTags:[]};
-    id:Id;
-    name : string | null; // null ako preuzima ime od rootBlock.
-    rootBlock? : Id; //ako je tag baziran na bloku
-
-    parentTagId:Id;
-    childrenTags:Id[];
-    blocks:Id[];
-    attribs:objectA;
-
-    constructor(){
-        this.id = "";
-        this.name = "";
-        this.parentTagId = "";
-        this.childrenTags = [];
-        this.blocks = [];
-        this.attribs = {};
-    }
-
-    async getName(){
-        if(this.name != null)
-            return this.name;
-        if(this.rootBlock === undefined)
-            throw Error(`Tag ${this.id} has no name or rootBlock. Cant getName().`);
-        let name = (await BLOCKS(this.rootBlock!)).pageTitle;
-        if(name == null)throw Error(`Tag ${this.id} has rootBlock ${this.rootBlock} but it has null pageTitle. Cant getName().`);
-        return name;
-    }
-
-    validate(){
-        if(this.name==null)
-            assert_non_null(this.rootBlock,"Tag with null name must be based on a block.");    
-    }
-    
-    DIRTY(){this.validate();DIRTY.mark("_TAGS",this.id);}
-    DIRTY_deleted(){DIRTY.mark("_TAGS",this.id,true);}
-    static DIRTY_deletedS(id:Id){DIRTY.mark("_TAGS",id,true);}
-
-    static async new(name:string,parentTagId:Id="" ,  waitServerSave=true) :Promise<Tag>{
-        let t = new Tag();
-        let parent :Tag|null = null;
-        
-        if(parentTagId!=""){
-            parent = await TAGS(parentTagId);
-            if(!parent) throw new Error(`Invalid parent: #${parentTagId} not found`);
-        }
-        
-        _TAGS[t.id = PROJECT.genId()] = t;
-        t.name = name;
-
-        if(parentTagId!=""){ 
-            t.parentTagId = parentTagId;
-            parent!.childrenTags.push(t.id);    
-        }
-
-        t.DIRTY();
-
-        if(waitServerSave)
-            await SaveAll();
-        return t;
-    }
-}
-RegClass(Tag);
-
-
-
-//######################
-// File: client/3View/0Window.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/3View/0Window.ts
+// File: client/1View/0Window.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/1View/0Window.ts
 //######################
 
 type WindowType = 'view'|'preferences'|'file-preview';
@@ -1251,7 +782,7 @@ class Window_Tab {
             this.contentsWindow = contentsWindow;
         }
 }
-class Window {
+class WindowPB {
     name: string;
     tabs: Window_Tab[];
 
@@ -1272,8 +803,8 @@ class Window {
 }
 
 //######################
-// File: client/3View/1View.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/3View/1View.ts
+// File: client/1View/1View.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/1View/1View.ts
 //######################
 
 interface IView {
@@ -1310,38 +841,55 @@ async function selectBlock(b:Block_Visual|null,editText:boolean|null=null){
         else
             selected_block = null;
 
-        if(editText || (editText===null && inTextEditMode)){
-            inTextEditMode = true;
-            if(document.activeElement != b.editor!.e){
-                if(document.activeElement)
-                    (document.activeElement! as HTMLElement).blur();    
-                FocusElement(selected_block!.editor!.e);
-            }
-            // console.log('focusing e')
-        }else{
-            inTextEditMode = false;
-            if(document.activeElement != b.el!){
-                if(document.activeElement)
-                    (document.activeElement! as HTMLElement).blur();
+        if(selected_block != null){
+            if(editText || (editText===null && inTextEditMode)){
+                inTextEditMode = true;    
+                FocusElement(selected_block!.editor_inner_el()!);
+            }else{
+                inTextEditMode = false;
                 FocusElement(selected_block!.el!);
             }
-            // console.log('focusing el')
         }
         updateSelectionVisual();
+        resolve(null);
     },2)));
 }
 
 function FocusElement(el:HTMLElement){
+    /*
+    Check if currently active element is already "el" or some child of el. If so, return.
+    Else, blur currently active, and focus to el instead.
+    */console.log("FOCUS",el);
+    if(document.activeElement){
+        if(document.activeElement == el)
+            return;
+
+        if(el.contains(document.activeElement)){
+            // is textbox selected?
+            if(selected_block!.editor_inner_el()!.contains(document.activeElement)){
+                if(inTextEditMode){
+                    return; // its ok to select it
+                }
+                else
+                {} // blur it!
+            }
+        }
+        
+        (document.activeElement! as HTMLElement).blur();
+    }
+    
     // el.dispatchEvent(new FocusEvent("focus"));
     // console.error("FOCUSING ",el);
     el.focus();
+
+
 
     
 }
 
 //######################
-// File: client/3View/Logseq/3Page_Visual.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/3View/Logseq/3Page_Visual.ts
+// File: client/1View/9Logseq/3Page_Visual.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/1View/9Logseq/3Page_Visual.ts
 //######################
 
 /*
@@ -1359,6 +907,23 @@ class Page_Visual{
         this.alreadyRendered = false;
 
         this.childrenHolderEl = null as any;
+    }
+
+    setDocumentURI(){
+        // change document url to have hash "#?pageId=<pageId>"
+        // let url = new URL(document.location.href);
+        // url.hash = "#?pageId="+this.pageId;
+        // history.pushState({}, '', url.href);
+        document.location.hash = "?pageId="+this.pageId;
+    }
+    getDocumentURI(){
+        let url = new URL(document.location.href);
+        let pageId = url.hash.match(/pageId=(\w+)/);
+        if(pageId){
+            this.pageId = pageId[1];
+            return this.pageId;
+        }
+        return null;
     }
     page():Block{
         return _BLOCKS[this.pageId]!;
@@ -1428,7 +993,7 @@ class Page_Visual{
         await this.makePage(maxUncollapseDepth);
     }
     async makePage(maxUncollapseDepth=0){
-        if(this.alreadyRendered) throw new Error("Page is being made again. Why?");
+        //if(this.alreadyRendered) throw new Error("Page is being made again. Why?");
         this.alreadyRendered = true;
 
         const p = this.page();
@@ -1467,15 +1032,15 @@ class Page_Visual{
 };
 
 //######################
-// File: client/3View/Logseq/4View.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/3View/Logseq/4View.ts
+// File: client/1View/9Logseq/4View.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/1View/9Logseq/4View.ts
 //######################
 
 /// <reference lib="dom" />
 
 
 //import {b} from "./BLOCKS.ts";
-declare var TinyMDE : any;
+//declare var TinyMDE : any;
 declare var LEEJS : any;
 type TMDE_InputEvent = {content:string,lines:string[]};
 
@@ -1500,7 +1065,7 @@ const el_to_BlockVis = {_: new WeakMap<HTMLElement,Block_Visual>(),
         this._.delete(key);
     }
 }
-let ACT /*"Actions"*/ = {
+const ACT /*"Actions"*/ = {
     //double click handling (since if i blur an element it wont register dbclick)
     lastElClicked : null as HTMLElement|null,
     clickTimestamp: 0      as number,
@@ -1600,7 +1165,7 @@ const SHIFT_FOCUS = {
     above_notOut:4,
     below_notOut:5,
 }
-function ShiftFocus(bv:Block_Visual, shiftFocus:number /*SHIFT_FOCUS*/, skipCollapsed=true){
+async function ShiftFocus(bv:Block_Visual, shiftFocus:number /*SHIFT_FOCUS*/, skipCollapsed=true){
     if(bv == null) throw Error("No selection shift focus.");
 
     function bv_above_sameLevel(bv:Block_Visual) : Block_Visual|null {
@@ -1732,8 +1297,11 @@ function ShiftFocus(bv:Block_Visual, shiftFocus:number /*SHIFT_FOCUS*/, skipColl
         focusElement = bv.parent();
     }else throw new Error("shiftFocus value must be one of/from SHIFT_FOCUS const object.")
     
+    //console.log("BV SSSS",focusElement);
     if(focusElement){
-        FocusElement(focusElement.el);
+        await selectBlock(focusElement);
+        // FocusElement(focusElement.el);
+        // updateSelectionVisual();
         return focusElement;
     }
     return null;
@@ -1787,16 +1355,20 @@ STATIC._body.addEventListener('click',(e:MouseEvent)=>{
     }
 });
 STATIC._body.addEventListener('keydown',(e:KeyboardEvent)=>{
-    if(e.key == 'Tab'){
+    if(e.key == 'Tab'){// && e.ctrlKey){
         SEARCHER.toggleVisible();
         e.preventDefault();
         e.stopPropagation();
     }
 });
 STATIC.blocks.addEventListener('keydown',async (e:KeyboardEvent)=>{
+    console.log("BLOCKS KEYDOWN11",e, (e as any).handled_in_editor);
     if(ACT.isEvHandled(e)) return;
     ACT.setEvHandled(e);
-    // console.log(e);
+    console.log("BLOCKS KEYDOWN22",e);
+
+    const handled_in_editor = (e as any).handled_in_editor;
+    if(handled_in_editor) return;
 
     HELP.logCodeHint("Navigation","Listeners/handlers for navigation keys.");
 
@@ -1816,8 +1388,13 @@ STATIC.blocks.addEventListener('keydown',async (e:KeyboardEvent)=>{
         }
     }else if(e.key == 'ArrowRight'){
         if(selected_block){
-            ShiftFocus(selected_block, SHIFT_FOCUS.parent);
-            ShiftFocus(selected_block, SHIFT_FOCUS.below_notOut);
+            (async ()=>{
+                console.log("Cur selected:",selected_block);
+                await ShiftFocus(selected_block, SHIFT_FOCUS.parent);
+                console.log("1 selected:",selected_block);
+                await ShiftFocus(selected_block, SHIFT_FOCUS.below_notOut);
+                console.log("2 selected:",selected_block);
+            })();
         }
     }else if(e.key=='Tab'){
         if(selected_block){
@@ -1877,17 +1454,19 @@ STATIC.blocks.addEventListener('keydown',async (e:KeyboardEvent)=>{
 
 
 //######################
-// File: client/3View/Logseq/5Blocks_Visual.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/3View/Logseq/5Blocks_Visual.ts
+// File: client/1View/9Logseq/5Blocks_Visual.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/1View/9Logseq/5Blocks_Visual.ts
 //######################
 
 /// <reference lib="dom" />
 
 
-declare var TinyMDE : any;
+// declare var TinyMDE : any;
+declare type QuillJS = any;
+declare var Quill : any;
 declare var LEEJS : any;
 
-
+// RegClass(Delta);
 class Block_Visual{
     blockId:Id;
     children:Block_Visual[];
@@ -1896,12 +1475,16 @@ class Block_Visual{
 
     // html elements:
     el:HTMLElement;  //block element
-    editor:any;  //editor inside block
+    editor:QuillJS;  //editor inside block
     childrenHolderEl:HTMLElement;
 
     finished:boolean; //was it fully rendered or no (just constructed (false) or renderAll called also (true))
 
-
+    editor_inner_el(){ // first child of "editor" element. With TinyMDE its editor.e but on quill its:
+        // return this.editor.e; // TinyMDE
+        return this.editor.root as HTMLElement; //Quill.js
+        //return this.el.querySelector('.editor > .ql-editor')! as HTMLElement | null; // Quill.js
+    }
     constructor(b:Block,parentElement?:HTMLElement , collapsed = true){
         this.blockId = b.id;
         this.children = [];
@@ -1920,17 +1503,38 @@ class Block_Visual{
 
         this.childrenHolderEl = this.el.querySelector('.children')!;
 
-        this.editor = new TinyMDE.Editor({ 
-            editor:this.el.querySelector('.editor')!,
-            element: this.el, 
-            content: b.text 
-        });
-        this.editor.e.setAttribute("tabindex","-1");
+        this.editor = new Quill(this.el.querySelector('.editor')!, {
+            modules: {
+              toolbar: false,
+            },
+            placeholder: "" ,
+            theme: 'snow', // or 'bubble'
+          });
+        if(typeof b.text == 'string')
+            this.editor.setText(b.text);
+        else
+            this.editor.setContents(b.text);
 
+        //   new TinyMDE.Editor({ 
+        //     editor:this.el.querySelector('.editor')!,
+        //     element: this.el, 
+        //     content: b.text 
+        // });
+
+        // this.editor_inner_el()!.setAttribute("tabindex","-1");
+        
         //   var commandBar = new TinyMDE.CommandBar({
         //     element: "toolbar",
         //     editor: tinyMDE,
         //   });
+
+        this.editor.root.addEventListener('keydown', function(event : KeyboardEvent) {
+            // Check if the key is an arrow key
+            (event as any).handled_in_editor = true;
+            // if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+            // event.stopPropagation(); // Prevent it from bubbling up
+            // }
+        });
         
         this.el.addEventListener('focus',async (ev:FocusEvent)=>{
             if(ACT.isEvHandled(ev)) return;
@@ -1939,20 +1543,20 @@ class Block_Visual{
             ev.stopImmediatePropagation();
             ev.preventDefault();
         });
-        this.editor.e.addEventListener('focus',async (ev:FocusEvent)=>{
-            if(ACT.isEvHandled(ev)) return;
-            ACT.setEvHandled(ev);
-            selectBlock(this);
-            ev.stopImmediatePropagation();
-            ev.preventDefault();
-        });
-        this.editor.e.addEventListener('click',async (ev:MouseEvent)=>{
+        // this.editor.e.addEventListener('focus',async (ev:FocusEvent)=>{
+        //     if(ACT.isEvHandled(ev)) return;
+        //     ACT.setEvHandled(ev);
+        //     selectBlock(this);
+        //     ev.stopImmediatePropagation();
+        //     ev.preventDefault();
+        // });
+        this.editor_inner_el()!.addEventListener('click',async (ev:MouseEvent)=>{
             if(ACT.isEvHandled(ev)) return;
             // console.error("editor click");
             ACT.setEvHandled(ev);
 
             //console.log("click e");
-            let c = ACT.fn_OnClicked(this.editor.e);
+            let c = ACT.fn_OnClicked(this.editor_inner_el()!);
             if(c==ACT.DOUBLE_CLICK){
                 selectBlock(this,true);
             }else
@@ -1964,7 +1568,7 @@ class Block_Visual{
             ACT.setEvHandled(ev);
 
             //console.log("click e");
-            let c = ACT.fn_OnClicked(this.editor.e);
+            let c = ACT.fn_OnClicked(this.el);
             if(c==ACT.DOUBLE_CLICK){
                 let xFromLeftEdge = ev.clientX - this.el.getBoundingClientRect().x;
                 if(xFromLeftEdge<=8) //alert(xFromLeftEdge + "CLICKED");
@@ -1978,18 +1582,20 @@ class Block_Visual{
             //else selectBlock(this);
         });
 
-        this.editor.addEventListener('input',async (ev:TMDE_InputEvent)=>{
+        this.editor.on('text-change',()=>{
             //let {content_str,linesDirty_BoolArray} = ev;
-            b.text = ev.content;//content_str;
+            b.text = Object.setPrototypeOf(this.editor.getContents(),Object.prototype);//content_str;
             b.DIRTY();
         });
-        this.editor.e.addEventListener('keydown',async (e:KeyboardEvent)=>{
+        this.el.addEventListener('keydown',async (e:KeyboardEvent)=>{
             if(ACT.isEvHandled(e)) return;
-            ACT.setEvHandled(e);
+
+            const handled_in_editor = (e as any).handled_in_editor;
+
+            console.log("KEYDOWN",e);
 
             HELP.logCodeHint("Navigation","Listeners/handlers inside Visual_Block");
-            // return;
-            // console.log(e);
+            
             let cancelEvent = true;
             if(e.key == 'Escape'){
                 // if(document.activeElement == this.editor.e){
@@ -2017,11 +1623,13 @@ class Block_Visual{
                     cancelEvent = false;
                 }
 
-            }else{
+            }
+            else{
                 cancelEvent = false;
             }
+            console.log(cancelEvent);
             if(cancelEvent)
-                {e.preventDefault();e.stopImmediatePropagation();}
+                {ACT.setEvHandled(e);e.preventDefault();e.stopImmediatePropagation();}
         });
     }
 
@@ -2157,8 +1765,606 @@ class Block_Visual{
 
 
 //######################
-// File: client/init.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/init.ts
+// File: client/1View/Modal.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/1View/Modal.ts
+//######################
+
+class Html_Modal{
+    background_element:HTMLElement|null;
+    foreground_element:HTMLElement|null;
+    cb_onBgClick:Function|null;
+    cb_onShow:Function|null;
+    cb_onHide:Function|null;
+    constructor(){
+        this.background_element = null;
+        this.foreground_element = null;
+        this.cb_onBgClick = null;
+        this.cb_onHide = null;
+        this.cb_onShow = null;
+    }
+    createElements(foregroundElement:HTMLElement, parent?:HTMLElement, opts?:Html_Modal_opts){
+        if(!parent)parent=document.body;
+        this.background_element = LEEJS.div({
+                ...(opts?.bgId && {id:opts.bgId}),
+                class:`${(opts?.bgClass) ? opts.bgClass : ""} fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50`,
+                $click:(e:MouseEvent)=>{
+                    if(e.target==this.background_element)
+                        this.onBgClick(e);
+            }},
+            this.foreground_element = foregroundElement,
+        )(parent);
+    }
+    onBgClick(e:MouseEvent){
+        if(this.cb_onBgClick)
+            if(this.cb_onBgClick(e)) return;
+        this.hide();
+    }
+    hide(){
+        if(this.cb_onHide)
+            if(this.cb_onHide()) return;
+        this.background_element!.style.display = "none";
+    }
+    show(){
+        if(this.cb_onShow)
+            if(this.cb_onShow()) return;
+        this.background_element!.style.display = "block";    
+    }
+}
+type Html_Modal_opts = {
+    bgId? : string;
+    bgClass? : string;
+};
+
+//######################
+// File: client/2/Searcher.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/2/Searcher.ts
+//######################
+
+
+declare var LEEJS : any;
+
+type SearcherMode = 'pages'|'tags'|'tags-local'|'blocks';
+// const SearcherMode = {
+//     __at0_pages:1, // [0]1 = pages
+//     __at0_tags:2,  // [0]2 = tags
+//     __at1_find:0,  // [1]0 = find
+//     __at1_add:1,   // [1]1 = add
+//     pages_find : [1,0],
+//     tags_find : [2,0],
+//     tags_add : [2,1]
+// }
+class Searcher {
+    visible:boolean;
+    input:HTMLInputElement;
+    finder:HTMLElement;
+    background:HTMLElement;
+    direct:HTMLElement;
+    recent:HTMLElement;
+    modeChoice:HTMLInputElement;
+
+    directs:string[];
+    recents:string[];
+    mode:  SearcherMode; //null|any;
+
+    constructor(){
+        this.visible = true;
+        this.directs = [];
+        this.recents = [];
+        this.mode = 'pages';
+        ///   MakeVisible {
+        let L = LEEJS;
+        // let inp,direct,recent;
+        
+        this.background = STATIC._body.querySelector('#finderRoot')!; //L.div(L.$I`window`,[
+          this.finder = L.div(L.$I`finder`,[
+
+            L.div({style:`display:flex;alignItems:center;`},[
+            
+            this.input = L.input(L.$I`finderSearch`,{type:"text",style:`flex:1;`,
+                    $click:(e:MouseEvent)=>{e.stopImmediatePropagation();},
+                    $input:(e:InputEvent)=>{
+                        this.Search();
+                        //TODO 
+                        WARN("throttle searches so you cancel previous searches (if unfinished)");
+                    },
+                    $keydown:async (e:KeyboardEvent)=>{
+                        if(e.key == 'ArrowDown'){
+                            e.preventDefault();
+                            e.stopImmediatePropagation();
+                            if(this.direct.children.length>0)
+                                (this.direct.children[0] as HTMLElement).focus();
+                        }else if(e.key=="Enter"){
+                            e.preventDefault();
+                            e.stopImmediatePropagation();
+                            let name = (this.input.value || "").trim();
+                            if(this.mode=='pages'){
+                                let page = await Block.newPage(name);
+                                view.openPage(page.id);
+                                this.toggleVisible(false);
+                            }else if(this.mode=='tags'){
+                                TODO("Make new tag and add it to selected_block.");
+                                let tag = await Tag.new(name);
+                                let b = selected_block;
+                                if(b){
+                                    await BlkFn.TagBlock(tag.id,b.blockId);
+                                    //b.tags.push(tag.id);
+                                    //b.DIRTY();
+                                }
+                                this.toggleVisible(false);
+                            }else if(this.mode=='blocks'){
+                                //select first? idk..
+                            }else throw Error("Unknown mode")
+                        }
+                    },
+                })(),
+
+                // make pages default selection
+            this.modeChoice = L.select(L.$I`modeChoice`,{//style:`flex:1;`,
+                    value:'pages',
+                    $change:async (e:Event)=>{
+                        let val = this.modeChoice.value as SearcherMode;
+                        this.mode = val || 'pages';
+                        this.Search();
+                    }
+                },[
+                    L.option({value:"pages"},"Pages")(),
+                    L.option({value:"blocks"},"Blocks")(),
+                    L.option({value:"tags"},"Tags")(),
+                    L.option({value:"tags-local"},"Tags local")(),
+                ])(),
+            ])(),
+            L.div(L.$I`finderSuggestions`,{
+                $bind:this, $click:this.__ItemClick.bind(this)
+            },[ 
+                this.direct = L.div(L.$I`direct`,[
+                    // L.div("Item"),L.div("Item"),L.div("Item"),
+                ])(),
+                this.recent = L.div(L.$I`recent`,[
+                    // L.div("Item"),L.div("Item"),
+                ])(),
+            ])()
+          ]).a(this.background);
+        // ]);
+        ///   MakeVisible }
+
+        this.background.setAttribute("style","width: 100%;height: calc(100vh - 8px);background-color: rgba(0, 0, 0, 0.5);position: absolute;");
+        this.background.addEventListener('click',(e:MouseEvent)=>{
+            if(e.target == this.background)
+                this.toggleVisible(false);
+            e.stopImmediatePropagation();
+            // e.preventDefault();
+        });
+
+        this.toggleVisible(false);
+    }
+    toggleVisible(setValue?:boolean){
+        if(setValue!==undefined)
+            this.visible = setValue;
+        else this.visible = !this.visible;
+        
+        this.background.style.display = this.visible?'block':'none';
+
+        if(this.visible==true){
+            this.input.value = "";
+            this.input.focus();
+            this.Search();
+        }else{
+            selectBlock(selected_block);
+        }
+    }
+    async makeItem(id:Id) : Promise<HTMLElement>{
+        let L = LEEJS;
+        let name = "<:NONAME:>";
+        let isBlock = true;
+        if(_BLOCKS[id]===undefined){
+            isBlock = false;
+            name = await (_TAGS[id]!.getName());
+        }else{
+            if(_BLOCKS[id]!.pageTitle) 
+                name = _BLOCKS[id]!.pageTitle;
+        }
+        return L.div(name,{"data-id":id,"data-isBlock":isBlock.toString(),tabindex:-1})();
+    }
+    async Search(){
+        let last = this.input.value.trim();
+        // if(last.indexOf(',')!=-1)
+        //     last = last.split(',').at(-1)!.trim();
+        // if(last == "") return;
+
+        if(this.mode == null || this.mode == 'pages'){
+            this.directs = []
+            this.directs.push(... (await BlkFn.SearchPages(last,'includes')));
+            //this.directs.push(... (await BlkFn.SearchTags(last,'includes')));
+        }
+        // else if(this.mode[0]==SearcherMode.__at0_pages){
+        //     this.directs = await BlkFn.SearchPages(last,'includes');
+        // }else if(this.mode[0]==SearcherMode.__at0_tags){
+        //     this.directs = await BlkFn.SearchTags(last,'includes');
+        // }
+
+        this.direct.innerHTML = "";
+        this.direct.append(
+            ... (await Promise.all(this.directs.map((id)=>(this.makeItem(id)))))
+        );
+        // this.directs = TAGS.filter(t=>t.name.includes(this.input.value));
+    }
+    // async Submit(){
+    //     let items = this.input.value.trim().split(',').map(v=>v.trim());
+    //     if(this.mode[0]==SearcherMode.__at0_pages){
+        
+    //     }else if(this.mode[0]==SearcherMode.__at0_tags){
+        
+    //     }
+    // }
+
+    // AddRecent(){
+
+    // }
+    // ItemSelected(){
+
+    // }
+    __ItemClick(event:MouseEvent){
+        let item:HTMLElement = event.target as HTMLElement;
+        if(item == this.recent || item == this.direct) return;
+
+        let isBlock = item.getAttribute('data-isBlock')=='true';
+        let id = item.getAttribute('data-id')!;
+        
+        view.openPage(id);
+        this.toggleVisible(false);
+    }
+}
+
+class SearchStatistics{
+
+    maxRecents : 20;
+    recentlySearched_Pages: [Id,string][];
+    recentlySearched_Tags: [Id,string][];
+    recentlyVisited_Pages: [Id,string][];
+    recentlyAdded_Tags: [Id,string][];
+
+    constructor(){
+        this.maxRecents = 20; 
+        this.recentlySearched_Pages = [];
+        this.recentlySearched_Tags = [];
+        this.recentlyVisited_Pages = [];
+        this.recentlyAdded_Tags = [];
+    }
+
+    DIRTY(){DIRTY.mark("SEARCH_STATISTICS");}
+        
+
+    
+    push_list(list:[Id,string][],id_name:[Id,string]){
+        list.splice(0,0,id_name); // add as first
+        if(list.length>this.maxRecents) // limit max length
+            list.splice(this.maxRecents,list.length-this.maxRecents);
+        this.DIRTY();
+    }
+    async recentlySearched_Pages_push(id:Id){
+        this.push_list(this.recentlySearched_Pages,[id,(await BLOCKS(id)).pageTitle!]);
+    }
+    async recentlySearched_Tags_push(id:Id){
+        this.push_list(this.recentlySearched_Tags,[id,await (await TAGS(id)).getName()]);
+    }
+    async recentlyVisited_Pages_push(id:Id){
+        this.push_list(this.recentlyVisited_Pages,[id,(await BLOCKS(id)).pageTitle!]);
+    }
+    async recentlyAdded_Tags_push(id:Id){
+        this.push_list(this.recentlyAdded_Tags,[id,await (await TAGS(id)).getName()]);
+    }
+}
+RegClass(SearchStatistics);
+
+
+
+
+//######################
+// File: client/3/1client.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/3/1client.ts
+//######################
+
+
+var PROJECT = new ProjectClass();
+var SEARCHER = (new Searcher());
+var SEARCH_STATISTICS = new SearchStatistics();
+
+var PAGES : {[id:Id]:true} = {}; //all pages
+
+var _BLOCKS : {[id:Id]:Block|null} = {};  // all blocks
+async function BLOCKS( id :Id , depth=1 ):Promise<Block>{
+    if(_BLOCKS[id]===null) await loadBlock(id,depth);
+    return _BLOCKS[id]!;
+}
+
+var _TAGS : {[id:Id]:Tag|null} = {};  // all tags
+async function TAGS( id :Id , depth=1 ):Promise<Tag>{
+    if(_TAGS[id]===null) await loadTag(id,depth);
+    return _TAGS[id]!;
+}
+
+let autosaveInterval :number|null = null;
+
+///////////////////////////////////////////////////////////
+
+async function rpc(code:string|Function, ...fnArgs:any):Promise<any>{
+    console.log("rpc:",code,fnArgs);
+    
+    if(typeof(code) == 'function')
+        code = `(${code}).apply(null,__Deserialize(${JSON_Serialize(fnArgs)}));`;
+    else if(typeof(code)=='string'){
+        code = `(${code}).apply(null,__Deserialize(${JSON_Serialize(fnArgs)}));`;
+    }
+    console.log("rpc after:",code);
+
+    const resp = await CMsg_eval({code}); 
+    console.log("rpc resp:",resp);
+    throwIf(resp);
+    return resp;
+}
+function throwIf(obj:any){
+    if(obj instanceof Error){
+        throw obj;
+    }
+}
+
+async function LoadInitial(){
+
+    /*
+    Load:  PROJECT , SEARCH_STATISTICS , PAGES
+    all ids for:  _BLOCKS, _TAGS
+    on demand objects for: _BLOCKS, _TAGS.
+    */
+    const resp = await CMsg_loadInitial(null);
+    console.log("LOAD INITIAL:",resp);
+    if(resp instanceof Error)
+        throw resp;
+    else if(resp === false){ // server has no saved state (fresh install) 
+
+    }else{
+        //let json = resp;//__Deserialize(resp);
+        PAGES =  JSON_Deserialize(resp.PAGES as any);
+        SEARCH_STATISTICS =  JSON_Deserialize(resp.SEARCH_STATISTICS as any);
+        PROJECT =  JSON_Deserialize(resp.PROJECT as any);   
+    
+        _BLOCKS = {};
+        // console.log("LOAD INITIAL:",JSON.stringify(resp.ids_BLOCKS));
+        resp.ids_BLOCKS.forEach(id=>_BLOCKS[id] = null);
+        _TAGS = {};
+        resp.ids_TAGS.forEach(id=>_TAGS[id] = null);
+        
+        console.log("LOAD INITIAL OVER:",PAGES,SEARCH_STATISTICS,PROJECT);
+        // console.log("LOAD INITIAL _BLOCKS:",JSON.stringify(_BLOCKS));
+    }
+}
+
+window.onbeforeunload = function() {
+    if (DIRTY._.length>0) {
+        SaveAll();
+        return 'There is unsaved data.';
+    }
+    return undefined;
+}
+async function SaveAll(){
+    //    Server.sendMsg({n:Server.MsgType.saveAll,d:{TAGS:_TAGS,BLOCKS:_BLOCKS}});
+    if(DIRTY._.length==0 || DIRTY.error!==null){
+        if(DIRTY.error) throw DIRTY.error;
+        return;
+    }
+        
+    // send to server all dirty objects.
+    // most importantly also send the ""
+    const oldHash = PROJECT.running_change_hash;
+    if(oldHash == (new ProjectClass()).running_change_hash){ // initial save
+        SEARCH_STATISTICS.DIRTY(); 
+        PROJECT.DIRTY();
+        DIRTY.mark("PAGES");
+        // console.error("Initial save.");
+        // console.error(JSON.stringify(DIRTY._))
+    }
+
+    const newHash = PROJECT.genChangeHash();
+    
+    //let packet : TMsg_saveAll_C2S["d"] = {hash:oldChangeHash,data:[]};
+    let packet : TCMsg_saveAll__DataOrDeleted[] = [];
+    for(let i = DIRTY._.length-1; i >= 0; i--){
+        const p = DIRTY._[i];
+        // console.error(p);
+        if(p[2]){ // thing was deleted.
+            packet.push({path:[p[0],p[1]],deleted:true});
+        }else{
+            let evalStr = DIRTY.evalStringResolve(p[0],p[1]);
+            try{
+                packet.push({path:[p[0],p[1]],data:JSON_Serialize(eval(evalStr))!});
+            }catch(e){
+                DIRTY.error = e as Error;
+                throw e;
+            }
+        }
+        DIRTY._.splice(i,1);
+    }
+    const resp = await CMsg_saveAll({hash:oldHash,newHash,data:packet});
+    if(resp instanceof Error){
+        DIRTY.error = resp;
+        throw resp; // !!!!!!!!!!!!!!
+    }
+}
+
+async function Backup(){
+    let r = await CMsg_backup(null);
+    throwIf(r);
+}
+
+async function loadBlock(blockId:Id,depth:number) {
+    // path = AttrPath.parse(path);
+    console.log("Loading block:",blockId);
+    let newBLOCKS_partial = await CMsg_loadBlock({id:blockId,depth});//rpc(`client_loadBlock`,blockId,depth);
+    //throwIf(newBLOCKS_partial);
+    if(newBLOCKS_partial instanceof Error){throw newBLOCKS_partial}else
+    for(let key in newBLOCKS_partial){
+        console.log("Loading block id:",key);
+        _BLOCKS[key] = JSON_Deserialize( newBLOCKS_partial[key] );
+        console.info("Loaded block: ",key,_BLOCKS[key]);
+    }  
+}
+async function loadTag(blockId:Id,depth:number) {
+    TODO("LoadTag");
+    // path = AttrPath.parse(path);
+    console.log("Loading tag:",blockId);
+    let newBLOCKS_partial = await CMsg_loadTag({id:blockId,depth});//await rpc(`client_loadBlock`,blockId,depth);
+    //throwIf(newBLOCKS_partial);
+    if(newBLOCKS_partial instanceof Error){throw newBLOCKS_partial}else
+    for(let key in newBLOCKS_partial){
+        console.log("Loading tag id:",key);
+        _TAGS[key] = JSON_Deserialize( newBLOCKS_partial[key] );
+    }  
+}
+
+
+
+//######################
+// File: client/3/2Blocks.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/3/2Blocks.ts
+//######################
+
+
+
+class Block{
+    static _serializable_default = {text:"",children:[],tags:[],attribs:{},refCount:1,collapsed:false};
+
+    id:Id;
+    refCount:number;
+    
+    pageTitle?:string;
+    text:string;
+
+    children:Id[];
+    tags:Id[];
+    attribs:objectA;
+    collapsed: boolean;
+
+    constructor(){
+        this.id = "";
+        this.text = "";
+        this.refCount = 1;
+        this.children = [];
+        this.tags = [];
+        this.attribs = {};
+        this.collapsed = false;
+    }
+    
+    DIRTY(){this.validate();DIRTY.mark("_BLOCKS",this.id);}
+    DIRTY_deleted(){DIRTY.mark("_BLOCKS",this.id,true);}
+    static DIRTY_deletedS(id:Id){DIRTY.mark("_BLOCKS",id,true);}
+    validate(){} // nothing to validate. Maybe pageTitle cant be set if Block isnt in PAGES ?
+
+    static async new(text="",  waitServerSave=true):Promise<Block>{
+        let b = new Block();
+        _BLOCKS[b.id = PROJECT.genId()] = b;
+        b.text = text;
+        b.DIRTY();
+        if(waitServerSave)
+            await SaveAll();
+        return b;
+    }
+    static async newPage(title="" , waitServerSave=true):Promise<Block>{
+        let b = new Block();
+        _BLOCKS[b.id = PROJECT.genId()] = b;
+        PAGES[b.id] = true;
+        DIRTY.mark("PAGES");
+        b.pageTitle = title;
+        b.DIRTY();
+        if(waitServerSave)
+            await SaveAll();
+        return b;
+    }
+
+
+    async makeVisual(parentElement?:HTMLElement, maxUncollapseDepth=999){
+        let bv = (new Block_Visual(this, parentElement, this.collapsed)); // ignore collapsed since we will call updateAll anyways.
+        await bv.updateAll(maxUncollapseDepth);
+        return bv;
+    }
+
+};
+RegClass(Block);
+
+
+
+
+//######################
+// File: client/3/3Tag.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/3/3Tag.ts
+//######################
+
+
+class Tag{ 
+    static _serializable_default = {attribs:{},parentTagId:"",childrenTags:[]};
+    id:Id;
+    name : string | null; // null ako preuzima ime od rootBlock.
+    rootBlock? : Id; //ako je tag baziran na bloku
+
+    parentTagId:Id;
+    childrenTags:Id[];
+    blocks:Id[];
+    attribs:objectA;
+
+    constructor(){
+        this.id = "";
+        this.name = "";
+        this.parentTagId = "";
+        this.childrenTags = [];
+        this.blocks = [];
+        this.attribs = {};
+    }
+
+    async getName(){
+        if(this.name != null) return this.name;
+        if(this.rootBlock === undefined) throw Error(`Tag ${this.id} has no name or rootBlock. Cant getName().`);
+        let name = (await BLOCKS(this.rootBlock!)).pageTitle;
+        if(name == null)throw Error(`Tag ${this.id} has rootBlock ${this.rootBlock} but it has null pageTitle. Cant getName().`);
+        return name;
+    }
+
+    DIRTY(){this.validate();DIRTY.mark("_TAGS",this.id);}
+    DIRTY_deleted(){DIRTY.mark("_TAGS",this.id,true);}
+    static DIRTY_deletedS(id:Id){DIRTY.mark("_TAGS",id,true);}
+    validate(){
+        if(this.name==null)
+            assert_non_null(this.rootBlock,"Tag with null name must be based on a block.");    
+    }
+
+    static async new(name:string,parentTagId:Id="" ,  waitServerSave=true) :Promise<Tag>{
+        let t = new Tag();
+        let parent :Tag|null = null;
+        
+        if(parentTagId!=""){
+            parent = await TAGS(parentTagId);
+            if(!parent) throw new Error(`Invalid parent: #${parentTagId} not found`);
+        }
+        
+        _TAGS[t.id = PROJECT.genId()] = t;
+        t.name = name;
+
+        if(parentTagId!=""){ 
+            t.parentTagId = parentTagId;
+            parent!.childrenTags.push(t.id);    
+        }
+
+        t.DIRTY();
+
+        if(waitServerSave)
+            await SaveAll();
+        return t;
+    }
+}
+RegClass(Tag);
+
+
+
+//######################
+// File: client/3/99init.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/3/99init.ts
 //######################
 
 
@@ -2167,7 +2373,8 @@ setTimeout((async function InitialOpen(){ //ask user to open some page (or make 
 
     autosaveInterval = setInterval(()=>{ //autosave timer 
         SaveAll();
-    },8000);
+        if(view.pageId) view.setDocumentURI();
+    },5000);
 
     if(Object.keys(PAGES).length==0){
         let pageName = prompt("No pages exist. Enter a new page name:");// || "";
@@ -2178,17 +2385,23 @@ setTimeout((async function InitialOpen(){ //ask user to open some page (or make 
         let p = await Block.newPage(pageName);
         await view.openPage(p.id);
     }else{
-        let pageName = prompt("No page open. Enter page name (must be exact):");// || "";
-        let srch;
+        let loadedPageId = view.getDocumentURI();
+        if(loadedPageId){
+            await view.openPage(view.pageId);
+        }else{
+            let pages = (await BlkFn.SearchPages("","includes")).map(id=>"\n"+(_BLOCKS[id]?.pageTitle));
+            let pageName = prompt("No page open. Enter page name (must be exact):"+pages);// || "";
+            let srch;
 
-        //[TODO] use searcher, not this prompt.
-        if(pageName == null || (srch=(await BlkFn.SearchPages(pageName,'includes'))).length < 1){
-            // console.error(srch);
-            window.location.reload();
-            return;
+            //[TODO] use searcher, not this prompt.
+            if(pageName == null || (srch=(await BlkFn.SearchPages(pageName,'includes'))).length < 1){
+                // console.error(srch);
+                window.location.reload();
+                return;
+            }
+
+            await view.openPage(srch[0]);
         }
-
-        await view.openPage(srch[0]);
     }
 }),1);
 

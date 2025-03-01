@@ -6,6 +6,10 @@ import { serveDirWithTs } from "jsr:@ayame113/ts-serve";
 import * as fs from "jsr:@std/fs";
 
 //declare var Deno : any;
+type ProjectClass = Error;
+type SearchStatistics = Error;
+declare var PAGES : any;
+declare var Server : any;
 
 const FILESPATH = `../FILES`; // we are in built/   so go up once.
 const FILE = {

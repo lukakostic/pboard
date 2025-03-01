@@ -1,49 +1,25 @@
 
 var PROJECT = new ProjectClass();
+var SEARCHER = (new Searcher());
 var SEARCH_STATISTICS = new SearchStatistics();
 
-type TBLOCKSn = {[id:Id]:Block|null};
-var _BLOCKS : TBLOCKSn = {};  // all blocks
-async function BLOCKS( idx :Id , depth :number = 1 ):Promise<Block>{
-    if(_BLOCKS[idx]===null)
-        await loadBlock(idx,depth);
-    return _BLOCKS[idx]!;
+var PAGES : {[id:Id]:true} = {}; //all pages
+
+var _BLOCKS : {[id:Id]:Block|null} = {};  // all blocks
+async function BLOCKS( id :Id , depth=1 ):Promise<Block>{
+    if(_BLOCKS[id]===null) await loadBlock(id,depth);
+    return _BLOCKS[id]!;
 }
 
-type TPAGES = {[id:Id]:true};
-var PAGES : TPAGES = {}; //all pages
-
-type TTAGSn = {[id:Id]:Tag|null};
-var _TAGS : TTAGSn = {};  // all tags
-async function TAGS( idx :Id , depth :number = 1 ):Promise<Tag>{
-    if(_TAGS[idx]===null)
-        await loadTag(idx,depth);
-    return _TAGS[idx]!;
+var _TAGS : {[id:Id]:Tag|null} = {};  // all tags
+async function TAGS( id :Id , depth=1 ):Promise<Tag>{
+    if(_TAGS[id]===null) await loadTag(id,depth);
+    return _TAGS[id]!;
 }
 
 let autosaveInterval :number|null = null;
 
-/*
-async function LoadAll(){
-    TODO();
-    Server.sendMsg({n:Server.MsgType.loadAll,cb:((resp:any)=>{
-        throwIf(resp);
-
-        _TAGS = __Deserialize(resp._TAGS ?? {});
-        _BLOCKS = __Deserialize(resp._BLOCKS ?? {});
-    })});
-
-}*/
-async function ReLoadAllData(){
-    let newData = await rpc(`client_ReLoadAllData`,{
-        BLOCKS:_BLOCKS,
-        PAGES:PAGES,
-        TAGS:_TAGS,
-    });
-    _BLOCKS = newData.BLOCKS;
-    PAGES = newData.PAGES;
-    _TAGS = newData.TAGS;
-}
+///////////////////////////////////////////////////////////
 
 async function rpc(code:string|Function, ...fnArgs:any):Promise<any>{
     console.log("rpc:",code,fnArgs);
@@ -55,7 +31,7 @@ async function rpc(code:string|Function, ...fnArgs:any):Promise<any>{
     }
     console.log("rpc after:",code);
 
-    const resp = await CMsg_eval({code});
+    const resp = await CMsg_eval({code}); 
     console.log("rpc resp:",resp);
     throwIf(resp);
     return resp;
@@ -94,6 +70,14 @@ async function LoadInitial(){
         console.log("LOAD INITIAL OVER:",PAGES,SEARCH_STATISTICS,PROJECT);
         // console.log("LOAD INITIAL _BLOCKS:",JSON.stringify(_BLOCKS));
     }
+}
+
+window.onbeforeunload = function() {
+    if (DIRTY._.length>0) {
+        SaveAll();
+        return 'There is unsaved data.';
+    }
+    return undefined;
 }
 async function SaveAll(){
     //    Server.sendMsg({n:Server.MsgType.saveAll,d:{TAGS:_TAGS,BLOCKS:_BLOCKS}});

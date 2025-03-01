@@ -11,7 +11,7 @@ class Window_Tab {
             this.contentsWindow = contentsWindow;
         }
 }
-class Window {
+class WindowPB {
     name: string;
     tabs: Window_Tab[];
 

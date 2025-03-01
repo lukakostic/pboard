@@ -245,323 +245,8 @@ const CMsg_loadTag = _MakeMsg(Msg_loadTag);
 const Msg_backup = 'backup';
 const CMsg_backup = _MakeMsg(Msg_backup);
 //######################
-// File: client/0000DEBUG.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/0000DEBUG.ts
-//######################
-var DEBUG = true;
-var DIRTY = {
-    _: [],
-    error: null,
-    mark (singleton, id, isDeleted = false) {
-        // check if user didnt make mistake in strEval string: 
-        try {
-            eval(this.evalStringResolve(singleton, id));
-        } catch (e) {
-            throw Error("Eval cant find object " + singleton + " id " + id + ". :" + e);
-        }
-        const require_id = [
-            "_BLOCKS",
-            "_TAGS"
-        ];
-        if (require_id.includes(singleton) && id === undefined) throw Error(`${singleton} requires an ID but none provided.`);
-        if (require_id.includes(singleton) == false && id !== undefined) throw Error(`${singleton} doesnt support an ID but id '${id}' was provided.`);
-        this._ = this._.filter((p)=>!(p[0] == singleton && p[1] == id)); // && (isDeleted?(p[2]==true):(p[2]!=true))));
-        //remove all which have same singleton and id.    
-        // for(let i = this._.length-1; i>=0;i--){
-        //         if(singleton == this._[i][0]){
-        //             if(id===this._[i][1])
-        //                 this._.splice(i,1);
-        //             // if(id!==undefined && this._[i][1]===undefined) return; //theyre more specific than us!
-        //             // if((id===this._[i][1]) || (this._[i][1]!==undefined && id===undefined)){
-        //             //     this._.splice(i,1);
-        //             //     break;
-        //             // }
-        //         }
-        //     }
-        this._.push([
-            singleton,
-            id,
-            isDeleted
-        ]);
-    // console.error("Marked: ",[singleton,id,isDeleted]);
-    },
-    evalStringResolve (singleton, id) {
-        let finalEvalStr = singleton;
-        if (id !== undefined) {
-            finalEvalStr += `["${id}"]`;
-        }
-        //else throw Error("Unexpected evalStr length: " + JSON.stringify(strEval));
-        return finalEvalStr;
-    }
-};
-const HELP = {
-    topics: {
-        Navigation: `
-### all of these dont cycle. You wont wrap to first child if you keep going down. ###
-ArrowUp : Above (any level)
-ArrowUp + Shift : Above (same level)
-ArrowDown : Below  (any level)
-ArrowDown + Shift : Above (same level)
-ArrowLeft : Select parent
-ArrowRight : Select parent's sibling below
-Tab : Below  (any level)
-Tab + Shift: Above  (any level)
-
-Escape (bock selection mode): Unselect block
-Escape (text edit mode): Go to block selection mode
-
-Enter (block selection mode):  Edit text  (go to text edit mode)
-
-Delete : delete block
-        `.trim()
-    },
-    // locations (and descriptions) in code to where you can find implementation of mentioned feature/topic
-    codeHints: {},
-    logCodeHint (topic, description) {
-        function getCodeLocation() {
-            return new Error().stack.split("\n").reverse().slice(2);
-        // const e = new Error();
-        // const regex = /\((.*):(\d+):(\d+)\)$/
-        // const match = regex.exec(e.stack!.split("\n")[2]);
-        // return {
-        //     filepath: match[1],
-        //     line: match[2],
-        //     column: match[3]
-        // };
-        }
-        if (!(topic in this.topics)) throw Error("Unknown topic: " + topic);
-        if (this.codeHints[topic] && this.codeHints[topic].some((ch)=>ch.desc == description)) {
-            //code hint is already present.
-            return;
-        }
-        (topic in this.codeHints ? this.codeHints[topic] : this.codeHints[topic] = [] // create new
-        ).push({
-            desc: description,
-            sourceLocation: getCodeLocation()
-        });
-    }
-};
-//######################
-// File: client/0Preferences.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/0Preferences.ts
-//######################
-// class PreferencesClass {
-//     this.pageView_maxWidth :number;
-// };
-// RegClass(PreferencesClass);
-//######################
-// File: client/0Project.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/0Project.ts
-//######################
-class ProjectClass {
-    running_change_hash;
-    __runningId;
-    version;
-    DIRTY() {
-        DIRTY.mark("PROJECT");
-    }
-    constructor(){
-        this.running_change_hash = "-";
-        this.__runningId = 1;
-        this.version = "1";
-    }
-    genChangeHash() {
-        this.running_change_hash = numToShortStr((Date.now() - new Date(2025, 0, 1).getTime()) * 1000 + Math.floor(Math.random() * 1000));
-        this.DIRTY();
-        return this.running_change_hash;
-    }
-    genId() {
-        ++this.__runningId;
-        this.DIRTY();
-        return this.__runningId.toString();
-    }
-}
-RegClass(ProjectClass);
-const SearcherMode = {
-    __at0_pages: 1,
-    __at0_tags: 2,
-    __at1_find: 0,
-    __at1_add: 1,
-    pages_find: [
-        1,
-        0
-    ],
-    tags_find: [
-        2,
-        0
-    ],
-    tags_add: [
-        2,
-        1
-    ]
-};
-class Searcher {
-    visible;
-    input;
-    finder;
-    direct;
-    recent;
-    directs;
-    recents;
-    mode;
-    constructor(){
-        this.visible = true;
-        this.directs = [];
-        this.recents = [];
-        this.mode = null;
-        ///   MakeVisible {
-        let L = LEEJS;
-        // let inp,direct,recent;
-        // div($I`window`,[
-        this.finder = L.div(L.$I`finder`, [
-            this.input = L.input(L.$I`finderSearch`, {
-                type: "text"
-            })(),
-            L.div(L.$I`finderSuggestions`, {
-                $bind: this,
-                $click: this.__ItemClick
-            }, [
-                this.direct = L.div(L.$I`direct`, [
-                    L.div("Item"),
-                    L.div("Item"),
-                    L.div("Item")
-                ])(),
-                this.recent = L.div(L.$I`recent`, [
-                    L.div("Item"),
-                    L.div("Item")
-                ])()
-            ])
-        ]).a('#finderRoot');
-        // ]);
-        ///   MakeVisible }
-        this.toggleVisible(false);
-    }
-    toggleVisible(setValue) {
-        if (setValue !== undefined) this.visible = setValue;
-        else this.visible = !this.visible;
-        this.finder.style.display = this.visible ? 'block' : 'none';
-    }
-    async Search() {
-        let last = this.input.value.trim();
-        if (last.indexOf(',') != -1) last = last.split(',').at(-1).trim();
-        if (this.mode[0] == SearcherMode.__at0_pages) {
-            this.directs = await BlkFn.SearchPages(last, 'includes');
-        } else if (this.mode[0] == SearcherMode.__at0_tags) {
-            this.directs = await BlkFn.SearchTags(last, 'includes');
-        }
-    // this.directs = TAGS.filter(t=>t.name.includes(this.input.value));
-    }
-    async Submit() {
-        let items = this.input.value.trim().split(',').map((v)=>v.trim());
-        if (this.mode[0] == SearcherMode.__at0_pages) {} else if (this.mode[0] == SearcherMode.__at0_tags) {}
-    }
-    AddRecent() {}
-    ItemSelected() {}
-    __ItemClick(event) {
-        let item = event.target;
-        if (item == this.recent || item == this.direct) return;
-    }
-}
-var SEARCHER = new Searcher();
-class SearchStatistics {
-    maxRecents;
-    recentlySearched_Pages;
-    recentlySearched_Tags;
-    recentlyVisited_Pages;
-    recentlyAdded_Tags;
-    constructor(){
-        this.maxRecents = 20;
-        this.recentlySearched_Pages = [];
-        this.recentlySearched_Tags = [];
-        this.recentlyVisited_Pages = [];
-        this.recentlyAdded_Tags = [];
-    }
-    DIRTY() {
-        DIRTY.mark("SEARCH_STATISTICS");
-    }
-    push_list(list, id_name) {
-        list.splice(0, 0, id_name); // add as first
-        if (list.length > this.maxRecents) list.splice(this.maxRecents, list.length - this.maxRecents);
-        this.DIRTY();
-    }
-    async recentlySearched_Pages_push(id) {
-        this.push_list(this.recentlySearched_Pages, [
-            id,
-            (await BLOCKS(id)).pageTitle
-        ]);
-    }
-    async recentlySearched_Tags_push(id) {
-        this.push_list(this.recentlySearched_Tags, [
-            id,
-            await (await TAGS(id)).getName()
-        ]);
-    }
-    async recentlyVisited_Pages_push(id) {
-        this.push_list(this.recentlyVisited_Pages, [
-            id,
-            (await BLOCKS(id)).pageTitle
-        ]);
-    }
-    async recentlyAdded_Tags_push(id) {
-        this.push_list(this.recentlyAdded_Tags, [
-            id,
-            await (await TAGS(id)).getName()
-        ]);
-    }
-}
-RegClass(SearchStatistics);
-var Server = {
-    __WebSock: new WebSocket("ws://localhost:9020"),
-    __SockOpen: false,
-    /*
-new Promise((resolve, reject) => {
-    WebSock.onopen(()=>resolve());
-});*/ __MsgQueue: [],
-    // let msgId = 0;
-    // msg: {text:null,cb:null}         //
-    // msg: {promise:true, text:null}   //promisify automatically
-    sendMsg (msg) {
-        // msgId++;
-        // msg.id = msgId;
-        let promise = null;
-        if (msg.cb === undefined) promise = new Promise((resolve, reject)=>{
-            msg.cb = resolve;
-        });
-        this.__MsgQueue.push(msg);
-        if (this.__SockOpen) this.__WebSock.send(JSON_Serialize({
-            n: msg.n,
-            d: msg.d
-        }));
-        if (promise !== null) return promise;
-    }
-};
-Server.__WebSock.onopen = (event)=>{
-    Server.__SockOpen = true;
-    for(let i = 0; i < Server.__MsgQueue.length; i++)Server.__WebSock.send(JSON_Serialize({
-        n: Server.__MsgQueue[i].n,
-        d: Server.__MsgQueue[i].d
-    }));
-    console.log("Open");
-// WebSock.send("Here's some text that the server is urgently awaiting!");
-};
-WARN("Da ne radim .shift nego attachujem ID na sent message i uklonim appropriate ID.");
-Server.__WebSock.onmessage = (event)=>{
-    let m = Server.__MsgQueue.shift();
-    let dataTxt = event.data;
-    console.log("websock recv:", dataTxt);
-    let data;
-    // if(dataTxt.startsWith("error")){
-    //     data = new Error(JSON_Deserialize(dataTxt.substring("error".length)));
-    // }else{
-    data = JSON_Deserialize(dataTxt);
-    // }
-    m.cb(data);
-// console.log(event.data);
-};
-// WebSock.send("Here's some text that the server is urgently awaiting!");
-//######################
-// File: client/1BlkFn_server.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/1BlkFn_server.ts
+// File: client/0/BlkFn.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0/BlkFn.ts
 //######################
 //let $CL = typeof($IS_CLIENT$)!==undefined; // true for client, false on server
 /*
@@ -591,11 +276,17 @@ So if i have this build-time way of saying "clone this fn, diff this fn" then i 
     // },
     async RemoveTagFromBlock (blockId, tagId) {
         const t = await TAGS(tagId, 0);
-        t.blocks.splice(t.blocks.indexOf(blockId), 1); //remove block from tag
-        t.DIRTY();
+        const ti = t.blocks.indexOf(blockId);
+        if (ti != -1) {
+            t.blocks.splice(ti, 1); //remove block from tag
+            t.DIRTY();
+        }
         const b = await BLOCKS(blockId, 0);
-        b.tags.splice(b.tags.indexOf(tagId), 1); //remove tag from block
-        b.DIRTY();
+        const bi = b.tags.indexOf(tagId);
+        if (bi != -1) {
+            b.tags.splice(bi, 1); //remove tag from block
+            b.DIRTY();
+        }
     },
     async RemoveAllTagsFromBlock (blockId) {
         const b = await BLOCKS(blockId, 0); ////if($CL&&!b)return;
@@ -607,9 +298,22 @@ So if i have this build-time way of saying "clone this fn, diff this fn" then i 
         b.tags = []; //    b.tags.splice(b.tags.indexOf(tagId),1); //remove tag from block
         b.DIRTY();
     },
-    async AddTagToBlock (blockId, tagId) {
-        const b = await BLOCKS(blockId, 0);
-        const t = await TAGS(tagId, 0);
+    async HasTagBlock (tagId, blockId/*,  $CL=false*/ ) {
+        //if(!$CL) return TAGS[tagId].blocks.indexOf(blockId)!=-1;
+        //if($CL){
+        if (_TAGS[tagId]) return _TAGS[tagId].blocks.indexOf(blockId) != -1;
+        if (_BLOCKS[blockId]) return _BLOCKS[blockId].tags.indexOf(tagId) != -1;
+        return (await TAGS(tagId)).blocks.indexOf(blockId) != -1;
+    //return $$$CL_rpc;
+    //}
+    },
+    async TagBlock (tagId, blockId) /*:boolean*/ {
+        if (await this.HasTagBlock(tagId, blockId /*, $CL*/ )) return; // false;
+        (await TAGS(tagId)).blocks.push(blockId);
+        _TAGS[tagId].DIRTY();
+        (await BLOCKS(blockId)).tags.push(tagId);
+        _BLOCKS[blockId].DIRTY();
+    // return true;
     },
     async DeleteBlockOnce (id) {
         if (_BLOCKS[id] == undefined) return false;
@@ -687,7 +391,7 @@ So if i have this build-time way of saying "clone this fn, diff this fn" then i 
         return [];
     },
     async SearchTags (title, mode = 'exact') {
-        let pages = await Promise.all(Object.keys(_TAGS).map(async (k)=>await TAGS(k))); //Object.values(TAGS);//.map(k=>BLOCKS[k]);
+        let pages = await Promise.all(Object.keys(_TAGS).map(async (k)=>await TAGS(k, 0))); //Object.values(TAGS);//.map(k=>BLOCKS[k]);
         if (mode == 'exact') {
             return pages.filter((p)=>p.name == title).map((p)=>p.id);
         } else if (mode == 'startsWith') {
@@ -696,335 +400,177 @@ So if i have this build-time way of saying "clone this fn, diff this fn" then i 
             return pages.filter((p)=>p.name?.includes(title)).map((p)=>p.id);
         }
         return [];
-    },
-    async HasTagBlock (tagId, blockId/*,  $CL=false*/ ) {
-        //if(!$CL) return TAGS[tagId].blocks.indexOf(blockId)!=-1;
-        //if($CL){
-        if (_TAGS[tagId]) return _TAGS[tagId].blocks.indexOf(blockId) != -1;
-        if (_BLOCKS[blockId]) return _BLOCKS[blockId].tags.indexOf(tagId) != -1;
-        return (await TAGS(tagId)).blocks.indexOf(blockId) != -1;
-    //return $$$CL_rpc;
-    //}
-    },
-    async TagBlock (tagId, blockId) /*:boolean*/ {
-        if (await this.HasTagBlock(tagId, blockId /*, $CL*/ )) return; // false;
-        (await TAGS(tagId)).blocks.push(blockId);
-        _TAGS[tagId].DIRTY();
-        (await BLOCKS(blockId)).tags.push(tagId);
-        _BLOCKS[blockId].DIRTY();
-    // return true;
-    },
-    async RemoveTagBlock (tagId, blockId) /*:boolean*/ {
-        if (await this.HasTagBlock(tagId, blockId /*, $CL*/ ) == false) return; // false;
-        (await TAGS(tagId)).blocks.splice(_TAGS[tagId].blocks.indexOf(blockId), 1);
-        (await BLOCKS(blockId)).tags.splice(_BLOCKS[blockId].tags.indexOf(tagId), 1);
-        _TAGS[tagId].DIRTY();
-        _BLOCKS[blockId].DIRTY();
-    // return true;
     }
 };
 //######################
-// File: client/1client.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/1client.ts
+// File: client/0/DEBUG.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0/DEBUG.ts
 //######################
-var PROJECT = new ProjectClass();
-var SEARCH_STATISTICS = new SearchStatistics();
-var _BLOCKS = {}; // all blocks
-async function BLOCKS(idx, depth = 1) {
-    if (_BLOCKS[idx] === null) await loadBlock(idx, depth);
-    return _BLOCKS[idx];
-}
-var PAGES = {}; //all pages
-var _TAGS = {}; // all tags
-async function TAGS(idx, depth = 1) {
-    if (_TAGS[idx] === null) await loadTag(idx, depth);
-    return _TAGS[idx];
-}
-let autosaveInterval = null;
-/*
-async function LoadAll(){
-    TODO();
-    Server.sendMsg({n:Server.MsgType.loadAll,cb:((resp:any)=>{
-        throwIf(resp);
-
-        _TAGS = __Deserialize(resp._TAGS ?? {});
-        _BLOCKS = __Deserialize(resp._BLOCKS ?? {});
-    })});
-
-}*/ async function ReLoadAllData() {
-    let newData = await rpc(`client_ReLoadAllData`, {
-        BLOCKS: _BLOCKS,
-        PAGES: PAGES,
-        TAGS: _TAGS
-    });
-    _BLOCKS = newData.BLOCKS;
-    PAGES = newData.PAGES;
-    _TAGS = newData.TAGS;
-}
-async function rpc(code, ...fnArgs) {
-    console.log("rpc:", code, fnArgs);
-    if (typeof code == 'function') code = `(${code}).apply(null,__Deserialize(${JSON_Serialize(fnArgs)}));`;
-    else if (typeof code == 'string') {
-        code = `(${code}).apply(null,__Deserialize(${JSON_Serialize(fnArgs)}));`;
+const DEBUG = true;
+const DIRTY = {
+    _: [],
+    error: null,
+    mark (singleton, id, isDeleted = false) {
+        // check if user didnt make mistake in strEval string: 
+        try {
+            eval(this.evalStringResolve(singleton, id));
+        } catch (e) {
+            throw Error("Eval cant find object " + singleton + " id " + id + ". :" + e);
+        }
+        const require_id = [
+            "_BLOCKS",
+            "_TAGS"
+        ];
+        if (require_id.includes(singleton) && id === undefined) throw Error(`${singleton} requires an ID but none provided.`);
+        if (require_id.includes(singleton) == false && id !== undefined) throw Error(`${singleton} doesnt support an ID but id '${id}' was provided.`);
+        this._ = this._.filter((p)=>!(p[0] == singleton && p[1] == id)); // && (isDeleted?(p[2]==true):(p[2]!=true))));
+        this._.push([
+            singleton,
+            id,
+            isDeleted
+        ]);
+    // console.error("Marked: ",[singleton,id,isDeleted]);
+    },
+    evalStringResolve (singleton, id) {
+        let finalEvalStr = singleton;
+        if (id !== undefined) {
+            finalEvalStr += `["${id}"]`;
+        }
+        //else throw Error("Unexpected evalStr length: " + JSON.stringify(strEval));
+        return finalEvalStr;
     }
-    console.log("rpc after:", code);
-    const resp = await CMsg_eval({
-        code
-    });
-    console.log("rpc resp:", resp);
-    throwIf(resp);
-    return resp;
-}
-function throwIf(obj) {
-    if (obj instanceof Error) {
-        throw obj;
+};
+const HELP = {
+    topics: {
+        Navigation: `
+### all of these dont cycle. You wont wrap to first child if you keep going down. ###
+ArrowUp : Above (any level)
+ArrowUp + Shift : Above (same level)
+ArrowDown : Below  (any level)
+ArrowDown + Shift : Above (same level)
+ArrowLeft : Select parent
+ArrowRight : Select parent's sibling below
+Tab : Below  (any level)
+Tab + Shift: Above  (any level)
+
+Escape (bock selection mode): Unselect block
+Escape (text edit mode): Go to block selection mode
+
+Enter (block selection mode):  Edit text  (go to text edit mode)
+
+Delete : delete block
+        `.trim()
+    },
+    // locations (and descriptions) in code to where you can find implementation of mentioned feature/topic
+    codeHints: {},
+    logCodeHint (topic, description) {
+        function getCodeLocation() {
+            return new Error().stack.split("\n").reverse().slice(2);
+        // const e = new Error();
+        // const regex = /\((.*):(\d+):(\d+)\)$/
+        // const match = regex.exec(e.stack!.split("\n")[2]);
+        // return {
+        //     filepath: match[1],
+        //     line: match[2],
+        //     column: match[3]
+        // };
+        }
+        if (!(topic in this.topics)) throw Error("Unknown topic: " + topic);
+        if (this.codeHints[topic] && this.codeHints[topic].some((ch)=>ch.desc == description)) {
+            //code hint is already present.
+            return;
+        }
+        (topic in this.codeHints ? this.codeHints[topic] : this.codeHints[topic] = [] // create new
+        ).push({
+            desc: description,
+            sourceLocation: getCodeLocation()
+        });
+    }
+};
+//######################
+// File: client/0/Preferences.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0/Preferences.ts
+//######################
+// class PreferencesClass {
+//     this.pageView_maxWidth :number;
+// };
+// RegClass(PreferencesClass);
+//######################
+// File: client/0/PROJECT.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0/PROJECT.ts
+//######################
+class ProjectClass {
+    running_change_hash;
+    __runningId;
+    version;
+    DIRTY() {
+        DIRTY.mark("PROJECT");
+    }
+    constructor(){
+        this.running_change_hash = "-";
+        this.__runningId = 1;
+        this.version = "1";
+    }
+    genChangeHash() {
+        this.running_change_hash = numToShortStr((Date.now() - new Date(2025, 0, 1).getTime()) * 1000 + Math.floor(Math.random() * 1000));
+        this.DIRTY();
+        return this.running_change_hash;
+    }
+    genId() {
+        ++this.__runningId;
+        this.DIRTY();
+        return this.__runningId.toString();
     }
 }
-async function LoadInitial() {
+RegClass(ProjectClass);
+const Server = {
+    __WebSock: new WebSocket("ws://localhost:9020"),
+    __SockOpen: false,
     /*
-    Load:  PROJECT , SEARCH_STATISTICS , PAGES
-    all ids for:  _BLOCKS, _TAGS
-    on demand objects for: _BLOCKS, _TAGS.
-    */ const resp = await CMsg_loadInitial(null);
-    console.log("LOAD INITIAL:", resp);
-    if (resp instanceof Error) throw resp;
-    else if (resp === false) {} else {
-        //let json = resp;//__Deserialize(resp);
-        PAGES = JSON_Deserialize(resp.PAGES);
-        SEARCH_STATISTICS = JSON_Deserialize(resp.SEARCH_STATISTICS);
-        PROJECT = JSON_Deserialize(resp.PROJECT);
-        _BLOCKS = {};
-        // console.log("LOAD INITIAL:",JSON.stringify(resp.ids_BLOCKS));
-        resp.ids_BLOCKS.forEach((id)=>_BLOCKS[id] = null);
-        _TAGS = {};
-        resp.ids_TAGS.forEach((id)=>_TAGS[id] = null);
-        console.log("LOAD INITIAL OVER:", PAGES, SEARCH_STATISTICS, PROJECT);
-    // console.log("LOAD INITIAL _BLOCKS:",JSON.stringify(_BLOCKS));
+new Promise((resolve, reject) => {
+    WebSock.onopen(()=>resolve());
+});*/ __MsgQueue: [],
+    // let msgId = 0;
+    // msg: {text:null,cb:null}         //
+    // msg: {promise:true, text:null}   //promisify automatically
+    sendMsg (msg) {
+        // msgId++;
+        // msg.id = msgId;
+        let promise = null;
+        if (msg.cb === undefined) promise = new Promise((resolve, reject)=>{
+            msg.cb = resolve;
+        });
+        this.__MsgQueue.push(msg);
+        if (this.__SockOpen) this.__WebSock.send(JSON_Serialize({
+            n: msg.n,
+            d: msg.d
+        }));
+        if (promise !== null) return promise;
     }
-}
-async function SaveAll() {
-    //    Server.sendMsg({n:Server.MsgType.saveAll,d:{TAGS:_TAGS,BLOCKS:_BLOCKS}});
-    if (DIRTY._.length == 0 || DIRTY.error !== null) {
-        if (DIRTY.error) throw DIRTY.error;
-        return;
-    }
-    // send to server all dirty objects.
-    // most importantly also send the ""
-    const oldHash = PROJECT.running_change_hash;
-    if (oldHash == new ProjectClass().running_change_hash) {
-        SEARCH_STATISTICS.DIRTY();
-        PROJECT.DIRTY();
-        DIRTY.mark("PAGES");
-    // console.error("Initial save.");
-    // console.error(JSON.stringify(DIRTY._))
-    }
-    const newHash = PROJECT.genChangeHash();
-    //let packet : TMsg_saveAll_C2S["d"] = {hash:oldChangeHash,data:[]};
-    let packet = [];
-    for(let i = DIRTY._.length - 1; i >= 0; i--){
-        const p = DIRTY._[i];
-        // console.error(p);
-        if (p[2]) {
-            packet.push({
-                path: [
-                    p[0],
-                    p[1]
-                ],
-                deleted: true
-            });
-        } else {
-            let evalStr = DIRTY.evalStringResolve(p[0], p[1]);
-            try {
-                packet.push({
-                    path: [
-                        p[0],
-                        p[1]
-                    ],
-                    data: JSON_Serialize(eval(evalStr))
-                });
-            } catch (e) {
-                DIRTY.error = e;
-                throw e;
-            }
-        }
-        DIRTY._.splice(i, 1);
-    }
-    const resp = await CMsg_saveAll({
-        hash: oldHash,
-        newHash,
-        data: packet
-    });
-    if (resp instanceof Error) {
-        DIRTY.error = resp;
-        throw resp; // !!!!!!!!!!!!!!
-    }
-}
-async function Backup() {
-    let r = await CMsg_backup(null);
-    throwIf(r);
-}
-async function loadBlock(blockId, depth) {
-    // path = AttrPath.parse(path);
-    console.log("Loading block:", blockId);
-    let newBLOCKS_partial = await CMsg_loadBlock({
-        id: blockId,
-        depth
-    }); //rpc(`client_loadBlock`,blockId,depth);
-    //throwIf(newBLOCKS_partial);
-    if (newBLOCKS_partial instanceof Error) {
-        throw newBLOCKS_partial;
-    } else for(let key in newBLOCKS_partial){
-        console.log("Loading block id:", key);
-        _BLOCKS[key] = JSON_Deserialize(newBLOCKS_partial[key]);
-        console.info("Loaded block: ", key, _BLOCKS[key]);
-    }
-}
-async function loadTag(blockId, depth) {
-    TODO("LoadTag");
-    // path = AttrPath.parse(path);
-    console.log("Loading tag:", blockId);
-    let newBLOCKS_partial = await CMsg_loadTag({
-        id: blockId,
-        depth
-    }); //await rpc(`client_loadBlock`,blockId,depth);
-    //throwIf(newBLOCKS_partial);
-    if (newBLOCKS_partial instanceof Error) {
-        throw newBLOCKS_partial;
-    } else for(let key in newBLOCKS_partial){
-        console.log("Loading tag id:", key);
-        _TAGS[key] = JSON_Deserialize(newBLOCKS_partial[key]);
-    }
-}
-//######################
-// File: client/2Blocks.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/2Blocks.ts
-//######################
-class Block {
-    static _serializable_default = {
-        text: "",
-        children: [],
-        tags: [],
-        attribs: {},
-        refCount: 1,
-        collapsed: false
-    };
-    id;
-    refCount;
-    pageTitle;
-    text;
-    children;
-    tags;
-    attribs;
-    collapsed;
-    constructor(){
-        this.id = "";
-        this.text = "";
-        this.refCount = 1;
-        this.children = [];
-        this.tags = [];
-        this.attribs = {};
-        this.collapsed = false;
-    }
-    DIRTY() {
-        this.validate();
-        DIRTY.mark("_BLOCKS", this.id);
-    }
-    DIRTY_deleted() {
-        DIRTY.mark("_BLOCKS", this.id, true);
-    }
-    static DIRTY_deletedS(id) {
-        DIRTY.mark("_BLOCKS", id, true);
-    }
-    validate() {}
-    static async new(text = "", waitServerSave = true) {
-        let b = new Block();
-        _BLOCKS[b.id = PROJECT.genId()] = b;
-        b.text = text;
-        b.DIRTY();
-        if (waitServerSave) await SaveAll();
-        return b;
-    }
-    static async newPage(title = "", waitServerSave = true) {
-        let b = new Block();
-        _BLOCKS[b.id = PROJECT.genId()] = b;
-        PAGES[b.id] = true;
-        DIRTY.mark("PAGES");
-        b.pageTitle = title;
-        b.DIRTY();
-        if (waitServerSave) await SaveAll();
-        return b;
-    }
-    async makeVisual(parentElement, maxUncollapseDepth = 999) {
-        let bv = new Block_Visual(this, parentElement, this.collapsed); // ignore collapsed since we will call updateAll anyways.
-        await bv.updateAll(maxUncollapseDepth);
-        return bv;
-    }
-}
-RegClass(Block);
-//######################
-// File: client/3Tag.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/3Tag.ts
-//######################
-class Tag {
-    static _serializable_default = {
-        attribs: {},
-        parentTagId: "",
-        childrenTags: []
-    };
-    id;
-    name;
-    rootBlock;
-    parentTagId;
-    childrenTags;
-    blocks;
-    attribs;
-    constructor(){
-        this.id = "";
-        this.name = "";
-        this.parentTagId = "";
-        this.childrenTags = [];
-        this.blocks = [];
-        this.attribs = {};
-    }
-    async getName() {
-        if (this.name != null) return this.name;
-        if (this.rootBlock === undefined) throw Error(`Tag ${this.id} has no name or rootBlock. Cant getName().`);
-        let name = (await BLOCKS(this.rootBlock)).pageTitle;
-        if (name == null) throw Error(`Tag ${this.id} has rootBlock ${this.rootBlock} but it has null pageTitle. Cant getName().`);
-        return name;
-    }
-    validate() {
-        if (this.name == null) assert_non_null(this.rootBlock, "Tag with null name must be based on a block.");
-    }
-    DIRTY() {
-        this.validate();
-        DIRTY.mark("_TAGS", this.id);
-    }
-    DIRTY_deleted() {
-        DIRTY.mark("_TAGS", this.id, true);
-    }
-    static DIRTY_deletedS(id) {
-        DIRTY.mark("_TAGS", id, true);
-    }
-    static async new(name, parentTagId = "", waitServerSave = true) {
-        let t = new Tag();
-        let parent = null;
-        if (parentTagId != "") {
-            parent = await TAGS(parentTagId);
-            if (!parent) throw new Error(`Invalid parent: #${parentTagId} not found`);
-        }
-        _TAGS[t.id = PROJECT.genId()] = t;
-        t.name = name;
-        if (parentTagId != "") {
-            t.parentTagId = parentTagId;
-            parent.childrenTags.push(t.id);
-        }
-        t.DIRTY();
-        if (waitServerSave) await SaveAll();
-        return t;
-    }
-}
-RegClass(Tag);
+};
+Server.__WebSock.onopen = (event)=>{
+    Server.__SockOpen = true;
+    for(let i = 0; i < Server.__MsgQueue.length; i++)Server.__WebSock.send(JSON_Serialize({
+        n: Server.__MsgQueue[i].n,
+        d: Server.__MsgQueue[i].d
+    }));
+    console.log("Open");
+// WebSock.send("Here's some text that the server is urgently awaiting!");
+};
+WARN("Da ne radim .shift nego attachujem ID na sent message i uklonim appropriate ID.");
+Server.__WebSock.onmessage = (event)=>{
+    let m = Server.__MsgQueue.shift();
+    let dataTxt = event.data;
+    console.log("websock recv:", dataTxt);
+    let data;
+    // if(dataTxt.startsWith("error")){
+    //     data = new Error(JSON_Deserialize(dataTxt.substring("error".length)));
+    // }else{
+    data = JSON_Deserialize(dataTxt);
+    // }
+    m.cb(data);
+// console.log(event.data);
+};
 class Window_Tab {
     rootWindow;
     contentsWindow;
@@ -1033,7 +579,7 @@ class Window_Tab {
         this.contentsWindow = contentsWindow;
     }
 }
-class Window {
+class WindowPB {
     name;
     tabs;
     constructor(name){
@@ -1077,32 +623,43 @@ async function selectBlock(b, editText = null) {
             const foundSelectBlock = STATIC.pageView.querySelector(`div.block[data-b-id="${id}"]`);
             if (foundSelectBlock) selected_block = el_to_BlockVis.get(foundSelectBlock);
             else selected_block = null;
-            if (editText || editText === null && inTextEditMode) {
-                inTextEditMode = true;
-                if (document.activeElement != b.editor.e) {
-                    if (document.activeElement) document.activeElement.blur();
-                    FocusElement(selected_block.editor.e);
-                }
-            // console.log('focusing e')
-            } else {
-                inTextEditMode = false;
-                if (document.activeElement != b.el) {
-                    if (document.activeElement) document.activeElement.blur();
+            if (selected_block != null) {
+                if (editText || editText === null && inTextEditMode) {
+                    inTextEditMode = true;
+                    FocusElement(selected_block.editor_inner_el());
+                } else {
+                    inTextEditMode = false;
                     FocusElement(selected_block.el);
                 }
-            // console.log('focusing el')
             }
             updateSelectionVisual();
+            resolve(null);
         }, 2));
 }
 function FocusElement(el) {
+    /*
+    Check if currently active element is already "el" or some child of el. If so, return.
+    Else, blur currently active, and focus to el instead.
+    */ console.log("FOCUS", el);
+    if (document.activeElement) {
+        if (document.activeElement == el) return;
+        if (el.contains(document.activeElement)) {
+            // is textbox selected?
+            if (selected_block.editor_inner_el().contains(document.activeElement)) {
+                if (inTextEditMode) {
+                    return; // its ok to select it
+                } else {} // blur it!
+            }
+        }
+        document.activeElement.blur();
+    }
     // el.dispatchEvent(new FocusEvent("focus"));
     // console.error("FOCUSING ",el);
     el.focus();
 }
 //######################
-// File: client/3View/Logseq/3Page_Visual.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/3View/Logseq/3Page_Visual.ts
+// File: client/1View/9Logseq/3Page_Visual.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/1View/9Logseq/3Page_Visual.ts
 //######################
 /*
 User is viewing a single page.
@@ -1116,6 +673,22 @@ User is viewing a single page.
         this.children = [];
         this.alreadyRendered = false;
         this.childrenHolderEl = null;
+    }
+    setDocumentURI() {
+        // change document url to have hash "#?pageId=<pageId>"
+        // let url = new URL(document.location.href);
+        // url.hash = "#?pageId="+this.pageId;
+        // history.pushState({}, '', url.href);
+        document.location.hash = "?pageId=" + this.pageId;
+    }
+    getDocumentURI() {
+        let url = new URL(document.location.href);
+        let pageId = url.hash.match(/pageId=(\w+)/);
+        if (pageId) {
+            this.pageId = pageId[1];
+            return this.pageId;
+        }
+        return null;
     }
     page() {
         return _BLOCKS[this.pageId];
@@ -1181,7 +754,7 @@ User is viewing a single page.
         await this.makePage(maxUncollapseDepth);
     }
     async makePage(maxUncollapseDepth = 0) {
-        if (this.alreadyRendered) throw new Error("Page is being made again. Why?");
+        //if(this.alreadyRendered) throw new Error("Page is being made again. Why?");
         this.alreadyRendered = true;
         const p = this.page();
         this.children = [];
@@ -1234,7 +807,7 @@ const el_to_BlockVis = {
         this._.delete(key);
     }
 };
-let ACT /*"Actions"*/  = {
+const ACT /*"Actions"*/  = {
     //double click handling (since if i blur an element it wont register dbclick)
     lastElClicked: null,
     clickTimestamp: 0,
@@ -1317,7 +890,7 @@ l.$E(
     above_notOut: 4,
     below_notOut: 5
 };
-function ShiftFocus(bv, shiftFocus/*SHIFT_FOCUS*/ , skipCollapsed = true) {
+async function ShiftFocus(bv, shiftFocus/*SHIFT_FOCUS*/ , skipCollapsed = true) {
     if (bv == null) throw Error("No selection shift focus.");
     function bv_above_sameLevel(bv) {
         assert_non_null(bv);
@@ -1430,8 +1003,11 @@ function ShiftFocus(bv, shiftFocus/*SHIFT_FOCUS*/ , skipCollapsed = true) {
     } else if (shiftFocus == SHIFT_FOCUS.parent) {
         focusElement = bv.parent();
     } else throw new Error("shiftFocus value must be one of/from SHIFT_FOCUS const object.");
+    //console.log("BV SSSS",focusElement);
     if (focusElement) {
-        FocusElement(focusElement.el);
+        await selectBlock(focusElement);
+        // FocusElement(focusElement.el);
+        // updateSelectionVisual();
         return focusElement;
     }
     return null;
@@ -1482,9 +1058,12 @@ STATIC._body.addEventListener('keydown', (e)=>{
     }
 });
 STATIC.blocks.addEventListener('keydown', async (e)=>{
+    console.log("BLOCKS KEYDOWN11", e, e.handled_in_editor);
     if (ACT.isEvHandled(e)) return;
     ACT.setEvHandled(e);
-    // console.log(e);
+    console.log("BLOCKS KEYDOWN22", e);
+    const handled_in_editor = e.handled_in_editor;
+    if (handled_in_editor) return;
     HELP.logCodeHint("Navigation", "Listeners/handlers for navigation keys.");
     let cancelEvent = true;
     // [TODO] if(e.ctrlKey)  then move around a block (indent,unindent , collapse,expand)
@@ -1499,8 +1078,13 @@ STATIC.blocks.addEventListener('keydown', async (e)=>{
         }
     } else if (e.key == 'ArrowRight') {
         if (selected_block) {
-            ShiftFocus(selected_block, SHIFT_FOCUS.parent);
-            ShiftFocus(selected_block, SHIFT_FOCUS.below_notOut);
+            (async ()=>{
+                console.log("Cur selected:", selected_block);
+                await ShiftFocus(selected_block, SHIFT_FOCUS.parent);
+                console.log("1 selected:", selected_block);
+                await ShiftFocus(selected_block, SHIFT_FOCUS.below_notOut);
+                console.log("2 selected:", selected_block);
+            })();
         }
     } else if (e.key == 'Tab') {
         if (selected_block) {
@@ -1548,6 +1132,7 @@ STATIC.blocks.addEventListener('keydown', async (e)=>{
     }
 // console.log("BLOCKS:",e);
 });
+// RegClass(Delta);
 class Block_Visual {
     blockId;
     children;
@@ -1557,6 +1142,11 @@ class Block_Visual {
     editor;
     childrenHolderEl;
     finished;
+    editor_inner_el() {
+        // return this.editor.e; // TinyMDE
+        return this.editor.root; //Quill.js
+    //return this.el.querySelector('.editor > .ql-editor')! as HTMLElement | null; // Quill.js
+    }
     constructor(b, parentElement, collapsed = true){
         this.blockId = b.id;
         this.children = [];
@@ -1574,16 +1164,32 @@ class Block_Visual {
         ]).appendTo(parentElement ?? STATIC.blocks);
         el_to_BlockVis.set(this.el, this);
         this.childrenHolderEl = this.el.querySelector('.children');
-        this.editor = new TinyMDE.Editor({
-            editor: this.el.querySelector('.editor'),
-            element: this.el,
-            content: b.text
+        this.editor = new Quill(this.el.querySelector('.editor'), {
+            modules: {
+                toolbar: false
+            },
+            placeholder: "",
+            theme: 'snow'
         });
-        this.editor.e.setAttribute("tabindex", "-1");
+        if (typeof b.text == 'string') this.editor.setText(b.text);
+        else this.editor.setContents(b.text);
+        //   new TinyMDE.Editor({ 
+        //     editor:this.el.querySelector('.editor')!,
+        //     element: this.el, 
+        //     content: b.text 
+        // });
+        // this.editor_inner_el()!.setAttribute("tabindex","-1");
         //   var commandBar = new TinyMDE.CommandBar({
         //     element: "toolbar",
         //     editor: tinyMDE,
         //   });
+        this.editor.root.addEventListener('keydown', function(event) {
+            // Check if the key is an arrow key
+            event.handled_in_editor = true;
+        // if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+        // event.stopPropagation(); // Prevent it from bubbling up
+        // }
+        });
         this.el.addEventListener('focus', async (ev)=>{
             if (ACT.isEvHandled(ev)) return;
             ACT.setEvHandled(ev);
@@ -1591,19 +1197,19 @@ class Block_Visual {
             ev.stopImmediatePropagation();
             ev.preventDefault();
         });
-        this.editor.e.addEventListener('focus', async (ev)=>{
-            if (ACT.isEvHandled(ev)) return;
-            ACT.setEvHandled(ev);
-            selectBlock(this);
-            ev.stopImmediatePropagation();
-            ev.preventDefault();
-        });
-        this.editor.e.addEventListener('click', async (ev)=>{
+        // this.editor.e.addEventListener('focus',async (ev:FocusEvent)=>{
+        //     if(ACT.isEvHandled(ev)) return;
+        //     ACT.setEvHandled(ev);
+        //     selectBlock(this);
+        //     ev.stopImmediatePropagation();
+        //     ev.preventDefault();
+        // });
+        this.editor_inner_el().addEventListener('click', async (ev)=>{
             if (ACT.isEvHandled(ev)) return;
             // console.error("editor click");
             ACT.setEvHandled(ev);
             //console.log("click e");
-            let c = ACT.fn_OnClicked(this.editor.e);
+            let c = ACT.fn_OnClicked(this.editor_inner_el());
             if (c == ACT.DOUBLE_CLICK) {
                 selectBlock(this, true);
             } else selectBlock(this);
@@ -1613,7 +1219,7 @@ class Block_Visual {
             // console.error("El click");
             ACT.setEvHandled(ev);
             //console.log("click e");
-            let c = ACT.fn_OnClicked(this.editor.e);
+            let c = ACT.fn_OnClicked(this.el);
             if (c == ACT.DOUBLE_CLICK) {
                 let xFromLeftEdge = ev.clientX - this.el.getBoundingClientRect().x;
                 if (xFromLeftEdge <= 8) {
@@ -1625,17 +1231,16 @@ class Block_Visual {
             }
         //else selectBlock(this);
         });
-        this.editor.addEventListener('input', async (ev)=>{
+        this.editor.on('text-change', ()=>{
             //let {content_str,linesDirty_BoolArray} = ev;
-            b.text = ev.content; //content_str;
+            b.text = Object.setPrototypeOf(this.editor.getContents(), Object.prototype); //content_str;
             b.DIRTY();
         });
-        this.editor.e.addEventListener('keydown', async (e)=>{
+        this.el.addEventListener('keydown', async (e)=>{
             if (ACT.isEvHandled(e)) return;
-            ACT.setEvHandled(e);
+            const handled_in_editor = e.handled_in_editor;
+            console.log("KEYDOWN", e);
             HELP.logCodeHint("Navigation", "Listeners/handlers inside Visual_Block");
-            // return;
-            // console.log(e);
             let cancelEvent = true;
             if (e.key == 'Escape') {
                 // if(document.activeElement == this.editor.e){
@@ -1659,7 +1264,9 @@ class Block_Visual {
             } else {
                 cancelEvent = false;
             }
+            console.log(cancelEvent);
             if (cancelEvent) {
+                ACT.setEvHandled(e);
                 e.preventDefault();
                 e.stopImmediatePropagation();
             }
@@ -1786,14 +1393,581 @@ class Block_Visual {
     }
 }
 //######################
-// File: client/init.ts
-// Path: file:///data/_Projects/pboardNotes_latest/src/client/init.ts
+// File: client/1View/Modal.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/1View/Modal.ts
+//######################
+class Html_Modal {
+    background_element;
+    foreground_element;
+    cb_onBgClick;
+    cb_onShow;
+    cb_onHide;
+    constructor(){
+        this.background_element = null;
+        this.foreground_element = null;
+        this.cb_onBgClick = null;
+        this.cb_onHide = null;
+        this.cb_onShow = null;
+    }
+    createElements(foregroundElement, parent, opts) {
+        if (!parent) parent = document.body;
+        this.background_element = LEEJS.div({
+            ...opts?.bgId && {
+                id: opts.bgId
+            },
+            class: `${opts?.bgClass ? opts.bgClass : ""} fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50`,
+            $click: (e)=>{
+                if (e.target == this.background_element) this.onBgClick(e);
+            }
+        }, this.foreground_element = foregroundElement)(parent);
+    }
+    onBgClick(e) {
+        if (this.cb_onBgClick) {
+            if (this.cb_onBgClick(e)) return;
+        }
+        this.hide();
+    }
+    hide() {
+        if (this.cb_onHide) {
+            if (this.cb_onHide()) return;
+        }
+        this.background_element.style.display = "none";
+    }
+    show() {
+        if (this.cb_onShow) {
+            if (this.cb_onShow()) return;
+        }
+        this.background_element.style.display = "block";
+    }
+}
+// const SearcherMode = {
+//     __at0_pages:1, // [0]1 = pages
+//     __at0_tags:2,  // [0]2 = tags
+//     __at1_find:0,  // [1]0 = find
+//     __at1_add:1,   // [1]1 = add
+//     pages_find : [1,0],
+//     tags_find : [2,0],
+//     tags_add : [2,1]
+// }
+class Searcher {
+    visible;
+    input;
+    finder;
+    background;
+    direct;
+    recent;
+    modeChoice;
+    directs;
+    recents;
+    mode;
+    constructor(){
+        this.visible = true;
+        this.directs = [];
+        this.recents = [];
+        this.mode = 'pages';
+        ///   MakeVisible {
+        let L = LEEJS;
+        // let inp,direct,recent;
+        this.background = STATIC._body.querySelector('#finderRoot'); //L.div(L.$I`window`,[
+        this.finder = L.div(L.$I`finder`, [
+            L.div({
+                style: `display:flex;alignItems:center;`
+            }, [
+                this.input = L.input(L.$I`finderSearch`, {
+                    type: "text",
+                    style: `flex:1;`,
+                    $click: (e)=>{
+                        e.stopImmediatePropagation();
+                    },
+                    $input: (e)=>{
+                        this.Search();
+                        //TODO 
+                        WARN("throttle searches so you cancel previous searches (if unfinished)");
+                    },
+                    $keydown: async (e)=>{
+                        if (e.key == 'ArrowDown') {
+                            e.preventDefault();
+                            e.stopImmediatePropagation();
+                            if (this.direct.children.length > 0) this.direct.children[0].focus();
+                        } else if (e.key == "Enter") {
+                            e.preventDefault();
+                            e.stopImmediatePropagation();
+                            let name = (this.input.value || "").trim();
+                            if (this.mode == 'pages') {
+                                let page = await Block.newPage(name);
+                                view.openPage(page.id);
+                                this.toggleVisible(false);
+                            } else if (this.mode == 'tags') {
+                                TODO("Make new tag and add it to selected_block.");
+                                let tag = await Tag.new(name);
+                                let b = selected_block;
+                                if (b) {
+                                    await BlkFn.TagBlock(tag.id, b.blockId);
+                                //b.tags.push(tag.id);
+                                //b.DIRTY();
+                                }
+                                this.toggleVisible(false);
+                            } else if (this.mode == 'blocks') {
+                            //select first? idk..
+                            } else throw Error("Unknown mode");
+                        }
+                    }
+                })(),
+                // make pages default selection
+                this.modeChoice = L.select(L.$I`modeChoice`, {
+                    value: 'pages',
+                    $change: async (e)=>{
+                        let val = this.modeChoice.value;
+                        this.mode = val || 'pages';
+                        this.Search();
+                    }
+                }, [
+                    L.option({
+                        value: "pages"
+                    }, "Pages")(),
+                    L.option({
+                        value: "blocks"
+                    }, "Blocks")(),
+                    L.option({
+                        value: "tags"
+                    }, "Tags")(),
+                    L.option({
+                        value: "tags-local"
+                    }, "Tags local")()
+                ])()
+            ])(),
+            L.div(L.$I`finderSuggestions`, {
+                $bind: this,
+                $click: this.__ItemClick.bind(this)
+            }, [
+                this.direct = L.div(L.$I`direct`, [])(),
+                this.recent = L.div(L.$I`recent`, [])()
+            ])()
+        ]).a(this.background);
+        // ]);
+        ///   MakeVisible }
+        this.background.setAttribute("style", "width: 100%;height: calc(100vh - 8px);background-color: rgba(0, 0, 0, 0.5);position: absolute;");
+        this.background.addEventListener('click', (e)=>{
+            if (e.target == this.background) this.toggleVisible(false);
+            e.stopImmediatePropagation();
+        // e.preventDefault();
+        });
+        this.toggleVisible(false);
+    }
+    toggleVisible(setValue) {
+        if (setValue !== undefined) this.visible = setValue;
+        else this.visible = !this.visible;
+        this.background.style.display = this.visible ? 'block' : 'none';
+        if (this.visible == true) {
+            this.input.value = "";
+            this.input.focus();
+            this.Search();
+        } else {
+            selectBlock(selected_block);
+        }
+    }
+    async makeItem(id) {
+        let L = LEEJS;
+        let name = "<:NONAME:>";
+        let isBlock = true;
+        if (_BLOCKS[id] === undefined) {
+            isBlock = false;
+            name = await _TAGS[id].getName();
+        } else {
+            if (_BLOCKS[id].pageTitle) name = _BLOCKS[id].pageTitle;
+        }
+        return L.div(name, {
+            "data-id": id,
+            "data-isBlock": isBlock.toString(),
+            tabindex: -1
+        })();
+    }
+    async Search() {
+        let last = this.input.value.trim();
+        // if(last.indexOf(',')!=-1)
+        //     last = last.split(',').at(-1)!.trim();
+        // if(last == "") return;
+        if (this.mode == null || this.mode == 'pages') {
+            this.directs = [];
+            this.directs.push(...await BlkFn.SearchPages(last, 'includes'));
+        //this.directs.push(... (await BlkFn.SearchTags(last,'includes')));
+        }
+        // else if(this.mode[0]==SearcherMode.__at0_pages){
+        //     this.directs = await BlkFn.SearchPages(last,'includes');
+        // }else if(this.mode[0]==SearcherMode.__at0_tags){
+        //     this.directs = await BlkFn.SearchTags(last,'includes');
+        // }
+        this.direct.innerHTML = "";
+        this.direct.append(...await Promise.all(this.directs.map((id)=>this.makeItem(id))));
+    // this.directs = TAGS.filter(t=>t.name.includes(this.input.value));
+    }
+    // async Submit(){
+    //     let items = this.input.value.trim().split(',').map(v=>v.trim());
+    //     if(this.mode[0]==SearcherMode.__at0_pages){
+    //     }else if(this.mode[0]==SearcherMode.__at0_tags){
+    //     }
+    // }
+    // AddRecent(){
+    // }
+    // ItemSelected(){
+    // }
+    __ItemClick(event) {
+        let item = event.target;
+        if (item == this.recent || item == this.direct) return;
+        let isBlock = item.getAttribute('data-isBlock') == 'true';
+        let id = item.getAttribute('data-id');
+        view.openPage(id);
+        this.toggleVisible(false);
+    }
+}
+class SearchStatistics {
+    maxRecents;
+    recentlySearched_Pages;
+    recentlySearched_Tags;
+    recentlyVisited_Pages;
+    recentlyAdded_Tags;
+    constructor(){
+        this.maxRecents = 20;
+        this.recentlySearched_Pages = [];
+        this.recentlySearched_Tags = [];
+        this.recentlyVisited_Pages = [];
+        this.recentlyAdded_Tags = [];
+    }
+    DIRTY() {
+        DIRTY.mark("SEARCH_STATISTICS");
+    }
+    push_list(list, id_name) {
+        list.splice(0, 0, id_name); // add as first
+        if (list.length > this.maxRecents) list.splice(this.maxRecents, list.length - this.maxRecents);
+        this.DIRTY();
+    }
+    async recentlySearched_Pages_push(id) {
+        this.push_list(this.recentlySearched_Pages, [
+            id,
+            (await BLOCKS(id)).pageTitle
+        ]);
+    }
+    async recentlySearched_Tags_push(id) {
+        this.push_list(this.recentlySearched_Tags, [
+            id,
+            await (await TAGS(id)).getName()
+        ]);
+    }
+    async recentlyVisited_Pages_push(id) {
+        this.push_list(this.recentlyVisited_Pages, [
+            id,
+            (await BLOCKS(id)).pageTitle
+        ]);
+    }
+    async recentlyAdded_Tags_push(id) {
+        this.push_list(this.recentlyAdded_Tags, [
+            id,
+            await (await TAGS(id)).getName()
+        ]);
+    }
+}
+RegClass(SearchStatistics);
+//######################
+// File: client/3/1client.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/3/1client.ts
+//######################
+var PROJECT = new ProjectClass();
+var SEARCHER = new Searcher();
+var SEARCH_STATISTICS = new SearchStatistics();
+var PAGES = {}; //all pages
+var _BLOCKS = {}; // all blocks
+async function BLOCKS(id, depth = 1) {
+    if (_BLOCKS[id] === null) await loadBlock(id, depth);
+    return _BLOCKS[id];
+}
+var _TAGS = {}; // all tags
+async function TAGS(id, depth = 1) {
+    if (_TAGS[id] === null) await loadTag(id, depth);
+    return _TAGS[id];
+}
+let autosaveInterval = null;
+///////////////////////////////////////////////////////////
+async function rpc(code, ...fnArgs) {
+    console.log("rpc:", code, fnArgs);
+    if (typeof code == 'function') code = `(${code}).apply(null,__Deserialize(${JSON_Serialize(fnArgs)}));`;
+    else if (typeof code == 'string') {
+        code = `(${code}).apply(null,__Deserialize(${JSON_Serialize(fnArgs)}));`;
+    }
+    console.log("rpc after:", code);
+    const resp = await CMsg_eval({
+        code
+    });
+    console.log("rpc resp:", resp);
+    throwIf(resp);
+    return resp;
+}
+function throwIf(obj) {
+    if (obj instanceof Error) {
+        throw obj;
+    }
+}
+async function LoadInitial() {
+    /*
+    Load:  PROJECT , SEARCH_STATISTICS , PAGES
+    all ids for:  _BLOCKS, _TAGS
+    on demand objects for: _BLOCKS, _TAGS.
+    */ const resp = await CMsg_loadInitial(null);
+    console.log("LOAD INITIAL:", resp);
+    if (resp instanceof Error) throw resp;
+    else if (resp === false) {} else {
+        //let json = resp;//__Deserialize(resp);
+        PAGES = JSON_Deserialize(resp.PAGES);
+        SEARCH_STATISTICS = JSON_Deserialize(resp.SEARCH_STATISTICS);
+        PROJECT = JSON_Deserialize(resp.PROJECT);
+        _BLOCKS = {};
+        // console.log("LOAD INITIAL:",JSON.stringify(resp.ids_BLOCKS));
+        resp.ids_BLOCKS.forEach((id)=>_BLOCKS[id] = null);
+        _TAGS = {};
+        resp.ids_TAGS.forEach((id)=>_TAGS[id] = null);
+        console.log("LOAD INITIAL OVER:", PAGES, SEARCH_STATISTICS, PROJECT);
+    // console.log("LOAD INITIAL _BLOCKS:",JSON.stringify(_BLOCKS));
+    }
+}
+window.onbeforeunload = function() {
+    if (DIRTY._.length > 0) {
+        SaveAll();
+        return 'There is unsaved data.';
+    }
+    return undefined;
+};
+async function SaveAll() {
+    //    Server.sendMsg({n:Server.MsgType.saveAll,d:{TAGS:_TAGS,BLOCKS:_BLOCKS}});
+    if (DIRTY._.length == 0 || DIRTY.error !== null) {
+        if (DIRTY.error) throw DIRTY.error;
+        return;
+    }
+    // send to server all dirty objects.
+    // most importantly also send the ""
+    const oldHash = PROJECT.running_change_hash;
+    if (oldHash == new ProjectClass().running_change_hash) {
+        SEARCH_STATISTICS.DIRTY();
+        PROJECT.DIRTY();
+        DIRTY.mark("PAGES");
+    // console.error("Initial save.");
+    // console.error(JSON.stringify(DIRTY._))
+    }
+    const newHash = PROJECT.genChangeHash();
+    //let packet : TMsg_saveAll_C2S["d"] = {hash:oldChangeHash,data:[]};
+    let packet = [];
+    for(let i = DIRTY._.length - 1; i >= 0; i--){
+        const p = DIRTY._[i];
+        // console.error(p);
+        if (p[2]) {
+            packet.push({
+                path: [
+                    p[0],
+                    p[1]
+                ],
+                deleted: true
+            });
+        } else {
+            let evalStr = DIRTY.evalStringResolve(p[0], p[1]);
+            try {
+                packet.push({
+                    path: [
+                        p[0],
+                        p[1]
+                    ],
+                    data: JSON_Serialize(eval(evalStr))
+                });
+            } catch (e) {
+                DIRTY.error = e;
+                throw e;
+            }
+        }
+        DIRTY._.splice(i, 1);
+    }
+    const resp = await CMsg_saveAll({
+        hash: oldHash,
+        newHash,
+        data: packet
+    });
+    if (resp instanceof Error) {
+        DIRTY.error = resp;
+        throw resp; // !!!!!!!!!!!!!!
+    }
+}
+async function Backup() {
+    let r = await CMsg_backup(null);
+    throwIf(r);
+}
+async function loadBlock(blockId, depth) {
+    // path = AttrPath.parse(path);
+    console.log("Loading block:", blockId);
+    let newBLOCKS_partial = await CMsg_loadBlock({
+        id: blockId,
+        depth
+    }); //rpc(`client_loadBlock`,blockId,depth);
+    //throwIf(newBLOCKS_partial);
+    if (newBLOCKS_partial instanceof Error) {
+        throw newBLOCKS_partial;
+    } else for(let key in newBLOCKS_partial){
+        console.log("Loading block id:", key);
+        _BLOCKS[key] = JSON_Deserialize(newBLOCKS_partial[key]);
+        console.info("Loaded block: ", key, _BLOCKS[key]);
+    }
+}
+async function loadTag(blockId, depth) {
+    TODO("LoadTag");
+    // path = AttrPath.parse(path);
+    console.log("Loading tag:", blockId);
+    let newBLOCKS_partial = await CMsg_loadTag({
+        id: blockId,
+        depth
+    }); //await rpc(`client_loadBlock`,blockId,depth);
+    //throwIf(newBLOCKS_partial);
+    if (newBLOCKS_partial instanceof Error) {
+        throw newBLOCKS_partial;
+    } else for(let key in newBLOCKS_partial){
+        console.log("Loading tag id:", key);
+        _TAGS[key] = JSON_Deserialize(newBLOCKS_partial[key]);
+    }
+}
+//######################
+// File: client/3/2Blocks.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/3/2Blocks.ts
+//######################
+class Block {
+    static _serializable_default = {
+        text: "",
+        children: [],
+        tags: [],
+        attribs: {},
+        refCount: 1,
+        collapsed: false
+    };
+    id;
+    refCount;
+    pageTitle;
+    text;
+    children;
+    tags;
+    attribs;
+    collapsed;
+    constructor(){
+        this.id = "";
+        this.text = "";
+        this.refCount = 1;
+        this.children = [];
+        this.tags = [];
+        this.attribs = {};
+        this.collapsed = false;
+    }
+    DIRTY() {
+        this.validate();
+        DIRTY.mark("_BLOCKS", this.id);
+    }
+    DIRTY_deleted() {
+        DIRTY.mark("_BLOCKS", this.id, true);
+    }
+    static DIRTY_deletedS(id) {
+        DIRTY.mark("_BLOCKS", id, true);
+    }
+    validate() {}
+    static async new(text = "", waitServerSave = true) {
+        let b = new Block();
+        _BLOCKS[b.id = PROJECT.genId()] = b;
+        b.text = text;
+        b.DIRTY();
+        if (waitServerSave) await SaveAll();
+        return b;
+    }
+    static async newPage(title = "", waitServerSave = true) {
+        let b = new Block();
+        _BLOCKS[b.id = PROJECT.genId()] = b;
+        PAGES[b.id] = true;
+        DIRTY.mark("PAGES");
+        b.pageTitle = title;
+        b.DIRTY();
+        if (waitServerSave) await SaveAll();
+        return b;
+    }
+    async makeVisual(parentElement, maxUncollapseDepth = 999) {
+        let bv = new Block_Visual(this, parentElement, this.collapsed); // ignore collapsed since we will call updateAll anyways.
+        await bv.updateAll(maxUncollapseDepth);
+        return bv;
+    }
+}
+RegClass(Block);
+//######################
+// File: client/3/3Tag.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/3/3Tag.ts
+//######################
+class Tag {
+    static _serializable_default = {
+        attribs: {},
+        parentTagId: "",
+        childrenTags: []
+    };
+    id;
+    name;
+    rootBlock;
+    parentTagId;
+    childrenTags;
+    blocks;
+    attribs;
+    constructor(){
+        this.id = "";
+        this.name = "";
+        this.parentTagId = "";
+        this.childrenTags = [];
+        this.blocks = [];
+        this.attribs = {};
+    }
+    async getName() {
+        if (this.name != null) return this.name;
+        if (this.rootBlock === undefined) throw Error(`Tag ${this.id} has no name or rootBlock. Cant getName().`);
+        let name = (await BLOCKS(this.rootBlock)).pageTitle;
+        if (name == null) throw Error(`Tag ${this.id} has rootBlock ${this.rootBlock} but it has null pageTitle. Cant getName().`);
+        return name;
+    }
+    DIRTY() {
+        this.validate();
+        DIRTY.mark("_TAGS", this.id);
+    }
+    DIRTY_deleted() {
+        DIRTY.mark("_TAGS", this.id, true);
+    }
+    static DIRTY_deletedS(id) {
+        DIRTY.mark("_TAGS", id, true);
+    }
+    validate() {
+        if (this.name == null) assert_non_null(this.rootBlock, "Tag with null name must be based on a block.");
+    }
+    static async new(name, parentTagId = "", waitServerSave = true) {
+        let t = new Tag();
+        let parent = null;
+        if (parentTagId != "") {
+            parent = await TAGS(parentTagId);
+            if (!parent) throw new Error(`Invalid parent: #${parentTagId} not found`);
+        }
+        _TAGS[t.id = PROJECT.genId()] = t;
+        t.name = name;
+        if (parentTagId != "") {
+            t.parentTagId = parentTagId;
+            parent.childrenTags.push(t.id);
+        }
+        t.DIRTY();
+        if (waitServerSave) await SaveAll();
+        return t;
+    }
+}
+RegClass(Tag);
+//######################
+// File: client/3/99init.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/3/99init.ts
 //######################
 setTimeout(async function InitialOpen() {
     await LoadInitial();
     autosaveInterval = setInterval(()=>{
         SaveAll();
-    }, 8000);
+        if (view.pageId) view.setDocumentURI();
+    }, 5000);
     if (Object.keys(PAGES).length == 0) {
         let pageName = prompt("No pages exist. Enter a new page name:"); // || "";
         if (pageName == null) {
@@ -1803,15 +1977,21 @@ setTimeout(async function InitialOpen() {
         let p = await Block.newPage(pageName);
         await view.openPage(p.id);
     } else {
-        let pageName = prompt("No page open. Enter page name (must be exact):"); // || "";
-        let srch;
-        //[TODO] use searcher, not this prompt.
-        if (pageName == null || (srch = await BlkFn.SearchPages(pageName, 'includes')).length < 1) {
-            // console.error(srch);
-            window.location.reload();
-            return;
+        let loadedPageId = view.getDocumentURI();
+        if (loadedPageId) {
+            await view.openPage(view.pageId);
+        } else {
+            let pages = (await BlkFn.SearchPages("", "includes")).map((id)=>"\n" + _BLOCKS[id]?.pageTitle);
+            let pageName = prompt("No page open. Enter page name (must be exact):" + pages); // || "";
+            let srch;
+            //[TODO] use searcher, not this prompt.
+            if (pageName == null || (srch = await BlkFn.SearchPages(pageName, 'includes')).length < 1) {
+                // console.error(srch);
+                window.location.reload();
+                return;
+            }
+            await view.openPage(srch[0]);
         }
-        await view.openPage(srch[0]);
     }
 }, 1);
 

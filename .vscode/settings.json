@@ -8,5 +8,8 @@
             "cmd": "bash compile.sh"
           }
         ]
+      },
+      "files.associations": {
+        "iostream": "cpp"
       }
 }

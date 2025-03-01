@@ -2,7 +2,7 @@
 
 
 //import {b} from "./BLOCKS.ts";
-declare var TinyMDE : any;
+//declare var TinyMDE : any;
 declare var LEEJS : any;
 type TMDE_InputEvent = {content:string,lines:string[]};
 
@@ -27,7 +27,7 @@ const el_to_BlockVis = {_: new WeakMap<HTMLElement,Block_Visual>(),
         this._.delete(key);
     }
 }
-let ACT /*"Actions"*/ = {
+const ACT /*"Actions"*/ = {
     //double click handling (since if i blur an element it wont register dbclick)
     lastElClicked : null as HTMLElement|null,
     clickTimestamp: 0      as number,
@@ -127,7 +127,7 @@ const SHIFT_FOCUS = {
     above_notOut:4,
     below_notOut:5,
 }
-function ShiftFocus(bv:Block_Visual, shiftFocus:number /*SHIFT_FOCUS*/, skipCollapsed=true){
+async function ShiftFocus(bv:Block_Visual, shiftFocus:number /*SHIFT_FOCUS*/, skipCollapsed=true){
     if(bv == null) throw Error("No selection shift focus.");
 
     function bv_above_sameLevel(bv:Block_Visual) : Block_Visual|null {
@@ -259,8 +259,11 @@ function ShiftFocus(bv:Block_Visual, shiftFocus:number /*SHIFT_FOCUS*/, skipColl
         focusElement = bv.parent();
     }else throw new Error("shiftFocus value must be one of/from SHIFT_FOCUS const object.")
     
+    //console.log("BV SSSS",focusElement);
     if(focusElement){
-        FocusElement(focusElement.el);
+        await selectBlock(focusElement);
+        // FocusElement(focusElement.el);
+        // updateSelectionVisual();
         return focusElement;
     }
     return null;
@@ -314,16 +317,20 @@ STATIC._body.addEventListener('click',(e:MouseEvent)=>{
     }
 });
 STATIC._body.addEventListener('keydown',(e:KeyboardEvent)=>{
-    if(e.key == 'Tab'){
+    if(e.key == 'Tab'){// && e.ctrlKey){
         SEARCHER.toggleVisible();
         e.preventDefault();
         e.stopPropagation();
     }
 });
 STATIC.blocks.addEventListener('keydown',async (e:KeyboardEvent)=>{
+    console.log("BLOCKS KEYDOWN11",e, (e as any).handled_in_editor);
     if(ACT.isEvHandled(e)) return;
     ACT.setEvHandled(e);
-    // console.log(e);
+    console.log("BLOCKS KEYDOWN22",e);
+
+    const handled_in_editor = (e as any).handled_in_editor;
+    if(handled_in_editor) return;
 
     HELP.logCodeHint("Navigation","Listeners/handlers for navigation keys.");
 
@@ -343,8 +350,13 @@ STATIC.blocks.addEventListener('keydown',async (e:KeyboardEvent)=>{
         }
     }else if(e.key == 'ArrowRight'){
         if(selected_block){
-            ShiftFocus(selected_block, SHIFT_FOCUS.parent);
-            ShiftFocus(selected_block, SHIFT_FOCUS.below_notOut);
+            (async ()=>{
+                console.log("Cur selected:",selected_block);
+                await ShiftFocus(selected_block, SHIFT_FOCUS.parent);
+                console.log("1 selected:",selected_block);
+                await ShiftFocus(selected_block, SHIFT_FOCUS.below_notOut);
+                console.log("2 selected:",selected_block);
+            })();
         }
     }else if(e.key=='Tab'){
         if(selected_block){

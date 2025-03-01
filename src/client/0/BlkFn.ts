@@ -26,15 +26,23 @@ const BlkFn = {
     //     }
     //     return true;
     // },
-    async RemoveTagFromBlock(blockId:Id,tagId:Id){ 
+    async RemoveTagFromBlock(blockId:Id,tagId:Id)
+    { 
         const t = await TAGS(tagId,0);
-        t.blocks.splice(t.blocks.indexOf(blockId),1); //remove block from tag
-        t.DIRTY();
+        const ti = t.blocks.indexOf(blockId);
+        if(ti!=-1){
+            t.blocks.splice(ti,1); //remove block from tag
+            t.DIRTY();
+        }
         const b = await BLOCKS(blockId,0);
-        b.tags.splice(b.tags.indexOf(tagId),1); //remove tag from block
-        b.DIRTY();
+        const bi = b.tags.indexOf(tagId);
+        if(bi!=-1){
+            b.tags.splice(bi,1); //remove tag from block
+            b.DIRTY();
+        }
     },
-    async RemoveAllTagsFromBlock(blockId:Id){  ////let $$$CL_clone;
+    async RemoveAllTagsFromBlock(blockId:Id)
+    {  ////let $$$CL_clone;
         const b = await BLOCKS(blockId,0);          ////if($CL&&!b)return;
         for(let i = 0; i<b.tags.length; i++){
             const t = await TAGS(b.tags[i],0);          ////if($CL&&!t)continue;
@@ -44,12 +52,27 @@ const BlkFn = {
         b.tags = [];//    b.tags.splice(b.tags.indexOf(tagId),1); //remove tag from block
         b.DIRTY();
     },
-    async AddTagToBlock(blockId:Id,tagId:Id){
-        const b = await BLOCKS(blockId,0);
-        const t = await TAGS(tagId,0);
-        
+    async HasTagBlock(tagId:Id,blockId:Id/*,  $CL=false*/):Promise<boolean>
+    {  //let $$$CL_local;
+        //if(!$CL) return TAGS[tagId].blocks.indexOf(blockId)!=-1;
+        //if($CL){
+            if(_TAGS[tagId]) return _TAGS[tagId].blocks.indexOf(blockId)!=-1;
+            if(_BLOCKS[blockId]) return _BLOCKS[blockId].tags.indexOf(tagId)!=-1;
+            return (await TAGS(tagId)).blocks.indexOf(blockId)!=-1;
+            //return $$$CL_rpc;
+        //}
     },
-    async DeleteBlockOnce(id:Id){  ////let $$$CL_diff;
+    async TagBlock(tagId:Id,blockId:Id)/*:boolean*/
+    {  //let $$$CL_clone;
+        if(await this.HasTagBlock(tagId,blockId/*, $CL*/)) return;// false;
+        (await TAGS(tagId)).blocks.push(blockId);
+        _TAGS[tagId]!.DIRTY();
+        (await BLOCKS(blockId)).tags.push(tagId);
+        _BLOCKS[blockId]!.DIRTY();
+        // return true;
+    },
+    async DeleteBlockOnce(id:Id)
+    {  ////let $$$CL_diff;
         if(_BLOCKS[id]==undefined) return false;
         const b = await BLOCKS(id,0);
         // console.error("delete once",id,b.refCount);
@@ -62,7 +85,8 @@ const BlkFn = {
         
         return true;// true; //got fully deleted
     },
-    async DeleteBlockEverywhere(id:Id){  ////let $$$CL_diff;
+    async DeleteBlockEverywhere(id:Id)
+    {  ////let $$$CL_diff;
         if(_BLOCKS[id]==undefined) return;
         const b = await BLOCKS(id,0);
         b.refCount=0;
@@ -101,7 +125,8 @@ const BlkFn = {
             WARN("We arent modifying array in-place (for performance), caller may hold old reference");
         }*/
     },
-    async InsertBlockChild(parent:Id, child:Id, index:number )/*:Id[]*/{  ////let $$$CL_clone;
+    async InsertBlockChild(parent:Id, child:Id, index:number )/*:Id[]*/
+    {  ////let $$$CL_clone;
         const p = await BLOCKS(parent);                 ////if($CL&&!p)return;
         const l = p.children;
         if(index >= l.length || index<0){
@@ -112,7 +137,8 @@ const BlkFn = {
         p.DIRTY();
         // return l;
     },
-    async SearchPages(title:string,mode:'exact'|'startsWith'|'includes'='exact'):Promise<Id[]>{  ////let $$$CL_ret;
+    async SearchPages(title:string,mode:'exact'|'startsWith'|'includes'='exact'):Promise<Id[]>
+    {  ////let $$$CL_ret;
         let pages = await Promise.all(Object.keys(PAGES).map(async k=>(await BLOCKS(k))));
         // console.info("ALL BLOCKS LOADED FOR SEARCH: ",JSON.stringify(_BLOCKS));
         if(mode=='exact'){
@@ -124,8 +150,9 @@ const BlkFn = {
         }
         return [];
     },
-    async SearchTags(title:string,mode:'exact'|'startsWith'|'includes'='exact'):Promise<Id[]>{  //let $$$CL_ret;
-        let pages = await Promise.all(Object.keys(_TAGS).map(async k => await TAGS(k)));//Object.values(TAGS);//.map(k=>BLOCKS[k]);
+    async SearchTags(title:string,mode:'exact'|'startsWith'|'includes'='exact'):Promise<Id[]>
+    {  //let $$$CL_ret;
+        let pages = await Promise.all(Object.keys(_TAGS).map(async k => await TAGS(k,0)));//Object.values(TAGS);//.map(k=>BLOCKS[k]);
         if(mode=='exact'){
             return pages.filter(p=>p.name == title).map(p=>p.id);
         }else if(mode=='startsWith'){
@@ -134,31 +161,6 @@ const BlkFn = {
             return pages.filter(p=>p.name?.includes(title)).map(p=>p.id);
         }
         return [];
-    },
-    async HasTagBlock(tagId:Id,blockId:Id/*,  $CL=false*/):Promise<boolean>{  //let $$$CL_local;
-        //if(!$CL) return TAGS[tagId].blocks.indexOf(blockId)!=-1;
-        //if($CL){
-            if(_TAGS[tagId]) return _TAGS[tagId].blocks.indexOf(blockId)!=-1;
-            if(_BLOCKS[blockId]) return _BLOCKS[blockId].tags.indexOf(tagId)!=-1;
-            return (await TAGS(tagId)).blocks.indexOf(blockId)!=-1;
-            //return $$$CL_rpc;
-        //}
-    },
-    async TagBlock(tagId:Id,blockId:Id)/*:boolean*/{  //let $$$CL_clone;
-        if(await this.HasTagBlock(tagId,blockId/*, $CL*/)) return;// false;
-        (await TAGS(tagId)).blocks.push(blockId);
-        _TAGS[tagId]!.DIRTY();
-        (await BLOCKS(blockId)).tags.push(tagId);
-        _BLOCKS[blockId]!.DIRTY();
-        // return true;
-    },
-    async RemoveTagBlock(tagId:Id,blockId:Id)/*:boolean*/{   //let $$$CL_clone;
-        if(await this.HasTagBlock(tagId,blockId/*, $CL*/) == false) return;// false;
-        (await TAGS(tagId)).blocks.splice(_TAGS[tagId]!.blocks.indexOf(blockId),1);
-        (await BLOCKS(blockId)).tags.splice(_BLOCKS[blockId]!.tags.indexOf(tagId),1);
-        _TAGS[tagId]!.DIRTY();
-        _BLOCKS[blockId]!.DIRTY();
-        // return true;
     },
 
 }
