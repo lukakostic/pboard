@@ -2,10 +2,44 @@
 
 
 // declare var TinyMDE : any;
-declare type QuillJS = any;
-declare var Quill : any;
+type Quill = any;
+declare var Quill : Quill;
 declare var LEEJS : any;
 
+
+let showEditorToolbar = false;
+
+contextmenuHandlers["block"] = (target:EventTarget)=>{
+    if(!target) return null;
+    let blockId_el = (target as HTMLElement).closest('[data-b-id]') as HTMLElement;
+    if(!blockId_el) return null;
+    let blockVisual = el_to_BlockVis.get(blockId_el);
+    if(!blockVisual) return null;
+    let blockId = blockVisual.blockId;
+    let block = _BLOCKS[blockId];
+    if(!block) return null;
+    return [
+        ["Copy id",()=>{
+            navigator.clipboard.writeText(blockId);
+        }],
+        ["Collapse/Expand",()=>blockVisual.collapseTogle()],
+        ["Tags",()=>TAGGER.toggleVisible(true,blockVisual),{tooltip:"Open tag manager for this block."}],
+        
+        ["Toggle toolbar",()=>{
+            showEditorToolbar = !showEditorToolbar;
+
+        }],
+        ["PageView this",()=>view.openPage(block.id)],
+        ["GetText as json",()=>alert(JSON.stringify(block.text)),{tooltip:"See text of this block as json."}],
+        ["GetText",()=>alert(blockVisual.editor.getText()),{tooltip:"See text of this block."}],
+        ["Delete (!!)",()=>blockVisual.DeleteBlock(true),{tooltip:"Delete this instance.</br>Other references to this block wont be deleted.",classMod:((c:string)=>c.replace('btn-outline-light','btn-outline-danger'))}],
+        ["Delete all copies (!!)",()=>blockVisual.DeleteBlockEverywhere(true),{tooltip:"Delete any and all copies of this block.",classMod:((c:string)=>c.replace('btn-outline-light','btn-outline-danger'))}],
+    ];
+};
+contextmenuHandlers["block-editor"] = (target:EventTarget)=>{
+    if(inTextEditMode) return null;
+    return contextmenuHandlers["block"]!(target);
+};
 // RegClass(Delta);
 class Block_Visual{
     blockId:Id;
@@ -15,7 +49,7 @@ class Block_Visual{
 
     // html elements:
     el:HTMLElement;  //block element
-    editor:QuillJS;  //editor inside block
+    editor:Quill;  //editor inside block
     childrenHolderEl:HTMLElement;
 
     finished:boolean; //was it fully rendered or no (just constructed (false) or renderAll called also (true))
@@ -24,6 +58,15 @@ class Block_Visual{
         // return this.editor.e; // TinyMDE
         return this.editor.root as HTMLElement; //Quill.js
         //return this.el.querySelector('.editor > .ql-editor')! as HTMLElement | null; // Quill.js
+    }
+    editor_firstEl(){ 
+        let arrayOrLeaf = this.editor.getLeaf(0);
+        let node : Node|null = null;
+        if(Array.isArray(arrayOrLeaf)) node = arrayOrLeaf[0].domNode; // domNode returns text node instead of <p>
+        else node = arrayOrLeaf.domNode;  // domNode returns text node instead of <p>
+        while(node?.nodeType == Node.TEXT_NODE)
+            node = node.parentNode;
+        return node as HTMLElement;
     }
     constructor(b:Block,parentElement?:HTMLElement , collapsed = true){
         this.blockId = b.id;
@@ -35,9 +78,11 @@ class Block_Visual{
             class:"block",
             $bind:b, $bindEvents:b, "data-b-id":b.id, 
             tabindex:"-1",
-        },[LEEJS.div(LEEJS.$I`editor`),
-            LEEJS.div(LEEJS.$I`children`)])
-        .appendTo(parentElement ?? STATIC.blocks) as HTMLElement;
+            "data-contextmenu":"block",
+        },[ 
+            LEEJS.div(LEEJS.$I`editor`,{"data-contextmenu":"block-editor"}),
+            LEEJS.div(LEEJS.$I`children`)
+        ])(parentElement ?? STATIC.blocks) as HTMLElement;
         
         el_to_BlockVis.set(this.el,this);
 
@@ -45,15 +90,61 @@ class Block_Visual{
 
         this.editor = new Quill(this.el.querySelector('.editor')!, {
             modules: {
-              toolbar: false,
+            //   toolbar: true,
+                toolbar: [
+                    [{ header: [1, 2, false] }],
+                    ["bold", "italic", "underline"],
+                    ["image", "video"]
+                ],
+                blotFormatter2: {
+                    //     align: {
+                    //       allowAligning: true,
+                    //     },
+                    video: {
+                        registerCustomVideoBlot: true
+                    },
+                    resize: {
+                        //       allowResizing: true,
+                        useRelativeSize: true,
+                        allowResizeModeChange: true,
+                        imageOversizeProtection: true
+                    },
+                    //     delete: {
+                    //       allowKeyboardDelete: true,
+                    //     },
+                    image: {
+                        //       allowAltTitleEdit: true,
+                        registerImageTitleBlot: true,
+                        allowCompressor: true,
+                        compressorOptions: {
+                            jpegQuality: 0.7,
+                            maxWidth: 1000
+                        }
+                    }
+                },
             },
             placeholder: "" ,
-            theme: 'snow', // or 'bubble'
+            theme: 'snow', // 'bubble'
           });
-        if(typeof b.text == 'string')
+
+          let toolbar = this.editor.getModule('toolbar');
+          toolbar.addHandler('attachment', () => {
+          
+              const range = this.editor.getSelection(true);
+              const value = { url: "Link", text: "text" }
+              
+              this.editor.insertEmbed(range.index, 'attachment', value);
+              this.editor.setSelection(range.index + value.text.length);
+          });
+          console.log(toolbar);
+          
+        if(typeof (b.text) == 'string')
             this.editor.setText(b.text);
         else
             this.editor.setContents(b.text);
+
+        // const value = { url: "getBtn(event.target).style.minHeight='300px';", text: "text" }
+        // this.editor.insertEmbed(0, 'lineBtn', value);
 
         //   new TinyMDE.Editor({ 
         //     editor:this.el.querySelector('.editor')!,
@@ -68,12 +159,62 @@ class Block_Visual{
         //     editor: tinyMDE,
         //   });
 
-        this.editor.root.addEventListener('keydown', function(event : KeyboardEvent) {
+        this.editor.root.addEventListener('keydown', async (event : KeyboardEvent)=>{
             // Check if the key is an arrow key
-            (event as any).handled_in_editor = true;
+            console.log("editor keydown",event);
+            const markEventHandled = ()=>{
+                ACT.setEvHandled(event);
+                console.log("editor keydown MARKED HANDLED");
+                //event.stopPropagation(); // Prevent it from bubbling up
+            };
+
             // if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
-            // event.stopPropagation(); // Prevent it from bubbling up
+            //   event.stopPropagation(); // Prevent it from bubbling up
             // }
+            
+            if (event.key === 'F4') {
+                markEventHandled();
+                const range = this.editor.getSelection(true);
+                if (range) {
+                    let id = prompt("Enter Pboard board id:");
+                    BLOCKS_assertId(id);
+
+                    const value = { collapsed: true, id: id }; // Default to collapsed
+                    this.editor.insertEmbed(range.index, 'inline-pboard-block', value);
+                    this.editor.setSelection(range.index /*+ value.text.length*/ + 1); // Move cursor after inserted text
+                }
+            }else if (event.key === 'F2') {
+                markEventHandled();
+                const range = this.editor.getSelection(true);
+                console.log("F2 pressed",range);
+                if (range) {
+                    let pre = this.editor.getContents(0, range.index);
+                    let aft = this.editor.getContents(range.index);
+                    console.log("pre",pre);
+                    console.log("aft",aft);
+                    let blVis = await NewBlockInside(this.parentOrPage(),this.index()+1);
+                    console.log("New block visual",blVis);
+                    blVis.editor.setContents(aft);
+                    this.editor.setContents(pre);
+
+                    // const value = { collapsed: true, text: "OOGA BOOGA" }; // Default to collapsed
+                    // this.editor.insertEmbed(range.index, 'expandable', value);
+                    // this.editor.setSelection(range.index + value.text.length + 1); // Move cursor after inserted text
+                }
+            }else{ //other events which shouldnt propagate to the block visual
+                //dont handle a few shortcuts
+                if(event.ctrlKey && event.key === 'Enter'){
+                }else if(event.key === 'Escape'){
+                }else{ // handle all other keys
+                    markEventHandled();
+                }
+                // if(event.key === 'Tab' || event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'ArrowLeft' || event.key === 'ArrowRight'){
+                //     markEventHandled();
+                // }
+                   
+            }
+            
+            
         });
         
         this.el.addEventListener('focus',async (ev:FocusEvent)=>{
@@ -122,7 +263,8 @@ class Block_Visual{
             //else selectBlock(this);
         });
 
-        this.editor.on('text-change',()=>{
+        this.editor.on('text-change',(e:any)=>{
+            console.log("TEXT_CHANGE ",e);
             //let {content_str,linesDirty_BoolArray} = ev;
             b.text = Object.setPrototypeOf(this.editor.getContents(),Object.prototype);//content_str;
             b.DIRTY();
@@ -130,16 +272,22 @@ class Block_Visual{
         this.el.addEventListener('keydown',async (e:KeyboardEvent)=>{
             if(ACT.isEvHandled(e)) return;
 
-            const handled_in_editor = (e as any).handled_in_editor;
+            const markEventHandled = ()=>{
+                ACT.setEvHandled(e);
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                //e.stopPropagation(); // Prevent it from bubbling up
+            };
 
             console.log("KEYDOWN",e);
 
             HELP.logCodeHint("Navigation","Listeners/handlers inside Visual_Block");
             
-            let cancelEvent = true;
             if(e.key == 'Escape'){
                 // if(document.activeElement == this.editor.e){
-                    selectBlock(this,false);
+                console.log("ESCAPE block_visual");
+                markEventHandled();
+                selectBlock(this,false);
                 // }else{
                 //     selectBlock(null);
                 // }
@@ -149,27 +297,28 @@ class Block_Visual{
             // }
             else if(e.key=='Enter'){
                 if(e.ctrlKey){ //insert new block below current block
+                    markEventHandled();
                     selectBlock(await NewBlockAfter(this), true);
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
                 }
                 else if(e.shiftKey){
+                    markEventHandled();
                     selectBlock(await NewBlockInside(this), true);
-                    // e.shiftKey = false;
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
-                    
-                }else{
-                    cancelEvent = false;
                 }
-
             }
-            else{
-                cancelEvent = false;
+            else if(e.key=='T'||e.key=='t'){
+                markEventHandled();
+                TAGGER.toggleVisible(true,this);
             }
-            console.log(cancelEvent);
-            if(cancelEvent)
-                {ACT.setEvHandled(e);e.preventDefault();e.stopImmediatePropagation();}
+            else if(e.key=='Q'||e.key=='q'){
+                markEventHandled();
+                openContextMenu(this.el,this.el.clientLeft,this.el.clientTop);
+            }
+            // console.log(cancelEvent);
+            // if(cancelEvent)
+            //     {
+            //         markEventHandled();
+            //         ACT.setEvHandled(e);e.preventDefault();e.stopImmediatePropagation();
+            //     }
         });
     }
 
@@ -236,10 +385,52 @@ class Block_Visual{
         this.updateStyle();
         view!.updateBlocksById(this.blockId);
     }
+
+    focus(focusEditor:boolean|null=null){
+        if(focusEditor===null)focusEditor=inTextEditMode;
+        let el = focusEditor? (this.editor as any /*call quill.focus()*/) : this.el; 
+        /*
+        Check if currently active element is already "el" or some child of el. If so, return.
+        Else, blur currently active, and focus to el instead.
+        */console.log("FOCUS",el);
+        if(document.activeElement){
+            if(document.activeElement == el)
+                return;
+    
+            if(this.el.contains(document.activeElement)){
+                // is textbox selected?
+                if(this.editor_inner_el()!.contains(document.activeElement)){
+                    if(inTextEditMode){
+                        return; // its ok to select it
+                    }
+                    else
+                    {} // blur it!
+                }
+            }
+            
+            (document.activeElement! as HTMLElement).blur();
+        }
+        
+        // el.dispatchEvent(new FocusEvent("focus"));
+        // console.error("FOCUSING ",el);
+        el.focus();
+    }
     
     deleteSelf(){
         el_to_BlockVis.delete(this.el);
         this.el.parentElement?.removeChild(this.el);
+    }
+    async DeleteBlock(doConfirm=true){
+        if(doConfirm && !confirm(`Delete block?`)) return;
+        await BlkFn.DeleteBlockOnce(this.blockId);
+        //TODO: update all copies of this block.
+        this.deleteSelf();
+    }
+    async DeleteBlockEverywhere(doConfirm=true){
+        if(doConfirm && !confirm(`Delete block everywhere?\nThis will delete ALL instances of this block, everywhere (embeded).`)) return;
+        await BlkFn.DeleteBlockEverywhere(this.blockId);
+        //TODO: update all copies of this block.
+        this.deleteSelf();
     }
     updateStyle(){
         if(this.collapsed)

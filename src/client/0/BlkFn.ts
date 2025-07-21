@@ -28,6 +28,7 @@ const BlkFn = {
     // },
     async RemoveTagFromBlock(blockId:Id,tagId:Id)
     { 
+        BLOCKS_assertId(blockId); TAGS_assertId(tagId);
         const t = await TAGS(tagId,0);
         const ti = t.blocks.indexOf(blockId);
         if(ti!=-1){
@@ -43,6 +44,7 @@ const BlkFn = {
     },
     async RemoveAllTagsFromBlock(blockId:Id)
     {  ////let $$$CL_clone;
+        BLOCKS_assertId(blockId);
         const b = await BLOCKS(blockId,0);          ////if($CL&&!b)return;
         for(let i = 0; i<b.tags.length; i++){
             const t = await TAGS(b.tags[i],0);          ////if($CL&&!t)continue;
@@ -54,6 +56,7 @@ const BlkFn = {
     },
     async HasTagBlock(tagId:Id,blockId:Id/*,  $CL=false*/):Promise<boolean>
     {  //let $$$CL_local;
+        BLOCKS_assertId(blockId); TAGS_assertId(tagId);
         //if(!$CL) return TAGS[tagId].blocks.indexOf(blockId)!=-1;
         //if($CL){
             if(_TAGS[tagId]) return _TAGS[tagId].blocks.indexOf(blockId)!=-1;
@@ -64,6 +67,8 @@ const BlkFn = {
     },
     async TagBlock(tagId:Id,blockId:Id)/*:boolean*/
     {  //let $$$CL_clone;
+        BLOCKS_assertId(blockId); TAGS_assertId(tagId);
+
         if(await this.HasTagBlock(tagId,blockId/*, $CL*/)) return;// false;
         (await TAGS(tagId)).blocks.push(blockId);
         _TAGS[tagId]!.DIRTY();
@@ -73,7 +78,8 @@ const BlkFn = {
     },
     async DeleteBlockOnce(id:Id)
     {  ////let $$$CL_diff;
-        if(_BLOCKS[id]==undefined) return false;
+        BLOCKS_assertId(id);
+
         const b = await BLOCKS(id,0);
         // console.error("delete once",id,b.refCount);
         b.refCount--;
@@ -87,7 +93,8 @@ const BlkFn = {
     },
     async DeleteBlockEverywhere(id:Id)
     {  ////let $$$CL_diff;
-        if(_BLOCKS[id]==undefined) return;
+        BLOCKS_assertId(id);
+
         const b = await BLOCKS(id,0);
         b.refCount=0;
         for(let i = 0; i<b.children.length;i++){
@@ -127,7 +134,10 @@ const BlkFn = {
     },
     async InsertBlockChild(parent:Id, child:Id, index:number )/*:Id[]*/
     {  ////let $$$CL_clone;
+        BLOCKS_assertId(parent); BLOCKS_assertId(child);
+        
         const p = await BLOCKS(parent);                 ////if($CL&&!p)return;
+
         const l = p.children;
         if(index >= l.length || index<0){
             l.push(child);

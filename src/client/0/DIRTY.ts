@@ -15,7 +15,7 @@ const DIRTY = {
         this._ = this._.filter(p=>!(p[0]==singleton && p[1]==id));// && (isDeleted?(p[2]==true):(p[2]!=true))));
         
         this._.push([singleton,id,isDeleted]);
-        // console.error("Marked: ",[singleton,id,isDeleted]);
+        console.warn("Marked: ",[singleton,id,isDeleted]);
     },
     evalStringResolve(singleton:string,id?:any):string{
         let finalEvalStr = singleton;

@@ -2,17 +2,34 @@
 var PROJECT = new ProjectClass();
 var SEARCHER = (new Searcher());
 var SEARCH_STATISTICS = new SearchStatistics();
+var TAGGER = (new Tagger());
 
 var PAGES : {[id:Id]:true} = {}; //all pages
 
 var _BLOCKS : {[id:Id]:Block|null} = {};  // all blocks
+function BLOCKS_assertId(id:Id){
+    if(typeof(id)!='string')
+        throw Error(`Invalid (typeof != string) Block id ${id}`);
+    if(_BLOCKS[id]===undefined)
+        throw Error(`Invalid (non existant) Block id ${id}`);
+    return id;
+}
 async function BLOCKS( id :Id , depth=1 ):Promise<Block>{
+    BLOCKS_assertId(id);
     if(_BLOCKS[id]===null) await loadBlock(id,depth);
     return _BLOCKS[id]!;
 }
 
 var _TAGS : {[id:Id]:Tag|null} = {};  // all tags
+function TAGS_assertId(id:Id){
+    if(typeof(id)!='string')
+        throw Error(`Invalid (typeof != string) Tag id ${id}`);
+    if(_TAGS[id]===undefined)
+        throw Error(`Invalid (non existant) Tag id ${id}`);
+    return id;
+}
 async function TAGS( id :Id , depth=1 ):Promise<Tag>{
+    TAGS_assertId(id);
     if(_TAGS[id]===null) await loadTag(id,depth);
     return _TAGS[id]!;
 }
@@ -142,7 +159,7 @@ async function loadBlock(blockId:Id,depth:number) {
     }  
 }
 async function loadTag(blockId:Id,depth:number) {
-    TODO("LoadTag");
+    // TODO("LoadTag");
     // path = AttrPath.parse(path);
     console.log("Loading tag:",blockId);
     let newBLOCKS_partial = await CMsg_loadTag({id:blockId,depth});//await rpc(`client_loadBlock`,blockId,depth);

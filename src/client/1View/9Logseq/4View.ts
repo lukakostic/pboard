@@ -6,13 +6,13 @@
 declare var LEEJS : any;
 type TMDE_InputEvent = {content:string,lines:string[]};
 
-let view :Page_Visual = new Page_Visual();;
+let view :Page_Visual = new Page_Visual();
 
 let selected_block :Block_Visual|null = null;
 let inTextEditMode = false;
 
 
-const el_to_BlockVis = {_: new WeakMap<HTMLElement,Block_Visual>(),
+var el_to_BlockVis = {_: new WeakMap<HTMLElement,Block_Visual>(),
     get(key:HTMLElement , allowNull = false){
         let r = this._.get(key) ?? null;
         if(!allowNull) assert_non_null(key,"key");
@@ -47,16 +47,18 @@ const ACT /*"Actions"*/ = {
     },
 
     // marking already handled events when they bubble
-    __handledEvents : new Array<Event>(10),  //set of already handled events.
-    __handledEvents_circularIdx : 0    as number, // it wraps around so handledEvents is a circular buffer
+    // __handledEvents : new Array<Event>(10),  //set of already handled events.
+    // __handledEvents_circularIdx : 0    as number, // it wraps around so handledEvents is a circular buffer
+    
     // new events get added like so:  handledEvents[circIdx=(++circIdx %n)]=ev;  so it can keep at most n last events.
     setEvHandled(ev:Event){
-        this.__handledEvents[
-            this.__handledEvents_circularIdx=( ++this.__handledEvents_circularIdx %this.__handledEvents.length)
-        ] = ev;
+        // this.__handledEvents[
+        //     this.__handledEvents_circularIdx=( ++this.__handledEvents_circularIdx %this.__handledEvents.length)
+        // ] = ev;
+        (ev as any).handled_already = true;
     },
     isEvHandled(ev:Event){
-        return this.__handledEvents.indexOf(ev)!==-1;
+        return (ev as any).handled_already;// || (this.__handledEvents.indexOf(ev)!==-1);
     }
 
 };
@@ -65,10 +67,12 @@ const STATIC = {
     style_highlighter : document.getElementById('highlighterStyle')!,
     blocks : document.getElementById('blocks')!,
     pageView : document.getElementById('pageView')!,
+    pageView_Title : document.getElementById('pageView-title')!,
 };
 
 function propagateUpToBlock(el:HTMLElement,checkSelf=true):Block_Visual|null{
-    
+    // ovo bi moglo putem el.closest(query) umesto da rucno idem parentElement
+
     if(checkSelf && el.hasAttribute("data-b-id"))
         return assert_non_null(el_to_BlockVis.get(el) , "el->bv",DEBUG);
     
@@ -92,8 +96,13 @@ function updateSelectionVisual(){
     }
     div[data-b-id="${selected_block!.blockId}"]>div.editor.TinyMDE{\
     background-color: var(--block-editor-bg-selected-color) !important;\
+    }`
+    +(inTextEditMode?
+    `
+    div[data-b-id="${selected_block!.blockId}"]>div[role="toolbar"]{
+        display:contents; /*ili block*/
     }
-    `;
+    `:"");
 }
 
 
@@ -105,6 +114,7 @@ async function CheckAndHandle_PageNoBlocks(){
     if(view.pageId == "") return;
     let p = (await BLOCKS(view.pageId));
     if(p.children.length>0)return;
+    console.log("CheckAndHandle_PageNoBlocks",view.pageId);
     NewBlockInside(null);
 }
 
@@ -285,6 +295,7 @@ async function NewBlockAfter(thisBlock:Block_Visual){
     return blockVis;
 }
 async function NewBlockInside(thisBlockVis:Block_Visual|Page_Visual|null , idx=-1){
+    console.log("NewBlockInside",thisBlockVis,idx);
     if(thisBlockVis==null) thisBlockVis = view!;
     let parentBlock = thisBlockVis.id();
     let parentHolder = thisBlockVis.childrenHolderEl;
@@ -313,24 +324,22 @@ async function NewBlockInside(thisBlockVis:Block_Visual|Page_Visual|null , idx=-
 
 STATIC._body.addEventListener('click',(e:MouseEvent)=>{
     if(!(e.target) || propagateUpToBlock(e.target as HTMLElement) == null){
+        if(e.target.closest(".doesnt-cancel-selection")!== null) return; // if clicked on something that should not cancel selection, then do not cancel.
         selectBlock(null);
     }
 });
 STATIC._body.addEventListener('keydown',(e:KeyboardEvent)=>{
-    if(e.key == 'Tab'){// && e.ctrlKey){
+    if(e.key == 'F1'){// && e.ctrlKey){
         SEARCHER.toggleVisible();
         e.preventDefault();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
     }
 });
 STATIC.blocks.addEventListener('keydown',async (e:KeyboardEvent)=>{
-    console.log("BLOCKS KEYDOWN11",e, (e as any).handled_in_editor);
+    console.log("BLOCKS KEYDOWN11",e, ACT.isEvHandled(e));
     if(ACT.isEvHandled(e)) return;
     ACT.setEvHandled(e);
     console.log("BLOCKS KEYDOWN22",e);
-
-    const handled_in_editor = (e as any).handled_in_editor;
-    if(handled_in_editor) return;
 
     HELP.logCodeHint("Navigation","Listeners/handlers for navigation keys.");
 
@@ -363,6 +372,7 @@ STATIC.blocks.addEventListener('keydown',async (e:KeyboardEvent)=>{
             ShiftFocus(selected_block,e.shiftKey?SHIFT_FOCUS.above:SHIFT_FOCUS.below);
         }
     }else if(e.key == 'Escape'){
+        console.log("ESCAPE view");
         selectBlock(null);
     }else if(e.key=='Enter'){
 

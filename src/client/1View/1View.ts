@@ -2,6 +2,12 @@ interface IView {
 
 };
 
+contextmenuHandlers['page']=(()=>[
+    ["Backup",()=>{
+        alert("AYO");
+    }] as const
+]);
+document.body.setAttribute('data-contextmenu','page');
 
 async function selectBlock(b:Block_Visual|null,editText:boolean|null=null){
     // if(selected_block==b && editText===inTextEditMode) return;
@@ -35,45 +41,13 @@ async function selectBlock(b:Block_Visual|null,editText:boolean|null=null){
         if(selected_block != null){
             if(editText || (editText===null && inTextEditMode)){
                 inTextEditMode = true;    
-                FocusElement(selected_block!.editor_inner_el()!);
+                selected_block!.focus(inTextEditMode);
             }else{
                 inTextEditMode = false;
-                FocusElement(selected_block!.el!);
+                selected_block!.focus(inTextEditMode);
             }
         }
         updateSelectionVisual();
         resolve(null);
     },2)));
-}
-
-function FocusElement(el:HTMLElement){
-    /*
-    Check if currently active element is already "el" or some child of el. If so, return.
-    Else, blur currently active, and focus to el instead.
-    */console.log("FOCUS",el);
-    if(document.activeElement){
-        if(document.activeElement == el)
-            return;
-
-        if(el.contains(document.activeElement)){
-            // is textbox selected?
-            if(selected_block!.editor_inner_el()!.contains(document.activeElement)){
-                if(inTextEditMode){
-                    return; // its ok to select it
-                }
-                else
-                {} // blur it!
-            }
-        }
-        
-        (document.activeElement! as HTMLElement).blur();
-    }
-    
-    // el.dispatchEvent(new FocusEvent("focus"));
-    // console.error("FOCUSING ",el);
-    el.focus();
-
-
-
-    
 }

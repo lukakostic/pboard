@@ -5,8 +5,11 @@ User is viewing a single page.
 class Page_Visual{
     pageId : Id;
     children : Block_Visual[];
-    childrenHolderEl:HTMLElement;
+    childrenHolderEl : HTMLElement;
     alreadyRendered : boolean;
+
+    titleEl : HTMLInputElement|null = null; // title element, if board has a title.
+
     constructor(){
         this.pageId = "";
         this.children = [];
@@ -90,7 +93,6 @@ class Page_Visual{
     async openPage(newPageId:Id){
         const maxUncollapseDepth = 999;
 
-        this.childrenHolderEl = STATIC.blocks;
         await loadBlock(newPageId,maxUncollapseDepth);
         this.pageId = newPageId;
         this.children = [];
@@ -105,7 +107,11 @@ class Page_Visual{
         const p = this.page();
         this.children = [];
         document.title = p.pageTitle ?? "";
+
+        this.childrenHolderEl = STATIC.blocks;
         this.childrenHolderEl.innerHTML = ""; // clear
+
+
         /*
         async function makeBlockAndChildrenIfExist(bv:Block_Visual){
             //bv already exists and is created. Now we need to create visuals for its children (and theirs).
@@ -122,7 +128,27 @@ class Page_Visual{
                 }
             }
         }*/
-        
+        if(p.pageTitle !== undefined){
+            
+            this.titleEl = STATIC.pageView_Title as HTMLInputElement;
+            STATIC.pageView_Title.style.display = "inline-block"; // show title input if page has a title.            
+            
+            this.titleEl.value = p.pageTitle;
+            let changeEv = async (e:Event)=>{
+                if(p.pageTitle == this.titleEl!.value) return; // no change.
+                p.pageTitle = this.titleEl!.value;
+                console.log("Page title changed to:", p.pageTitle);
+                p.DIRTY();
+                this.setDocumentURI();
+            };
+            this.titleEl.oninput = changeEv;
+            this.titleEl.onchange = changeEv;
+            this.titleEl.onblur = changeEv;
+        }else{
+            this.titleEl = null;
+            STATIC.pageView_Title.style.display = "none"; // hide title input if no title.
+        }
+
         this.renderChildren();
     }
     updateBlocksById(id:Id, action:null/*unknown*/|'deleted'|'edited'=null){

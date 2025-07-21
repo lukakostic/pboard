@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tippy.js Context Menu</title>
+    <script defer src="https://unpkg.com/@popperjs/core@2"></script>
+    <script defer src="https://unpkg.com/tippy.js@6"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f4f4f4;
+        }
+
+        .context-menu-container {
+            background: #333;
+            color: white;
+            border-radius: 5px;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            display: grid;
+            gap: 3px;
+        }
+
+        .context-menu-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            font-size: 14px;
+            background: #444;
+            color: white;
+            transition: background 0.2s;
+        }
+
+        .context-menu-item:hover {
+            background: #555;
+        }
+
+        .tippy-content {
+            padding: 5px;
+        }
+        .divider {
+            height: 1px;
+            background: #666;
+            margin: 4px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Right-click anywhere to open the context menu</h2>
+
+    <div id="contextMenu" class="context-menu-container" style="display: none;">
+        <div class="context-menu-item" onclick="alert('Edit clicked')">Edit</div>
+        <div class="context-menu-item" onclick="alert('Delete clicked')">Delete</div>
+        <!-- <div class="divider"></div> -->
+        <div class="context-menu-item" onclick="alert('Settings clicked')">Settings</div>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            let contextMenuInstance;
+
+            document.addEventListener("contextmenu", function(event) {
+                event.preventDefault();
+
+                if (contextMenuInstance) {
+                    contextMenuInstance.hide();
+                    contextMenuInstance.destroy();
+                }
+
+                const menuContent = document.getElementById("contextMenu").cloneNode(true);
+                menuContent.style.display = "";
+                
+                contextMenuInstance = tippy(document.body, {
+                    content: menuContent,
+                    allowHTML: true,
+                    interactive: true,
+                    trigger: "manual",
+                    theme: "light-border",
+                    placement: "right-start",
+                    getReferenceClientRect: () => ({
+                        width: 0,
+                        height: 0,
+                        top: event.clientY,
+                        left: event.clientX,
+                        right: event.clientX,
+                        bottom: event.clientY,
+                    })
+                });
+
+                contextMenuInstance.show();
+            });
+
+            document.addEventListener("click", function(event) {
+                if (contextMenuInstance && !event.target.closest(".tippy-box")) {
+                    contextMenuInstance.hide();
+                }
+            });
+
+            document.addEventListener("keydown", function(event) {
+                if (event.key === "Escape" && contextMenuInstance) {
+                    contextMenuInstance.hide();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

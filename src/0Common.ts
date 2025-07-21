@@ -33,6 +33,13 @@ function castIsnt(obj: any, ...isnt: any){
     return obj;
 }
 
+function getElement(node:Node):HTMLElement{
+    while(node.nodeType != Node.ELEMENT_NODE){
+        node = node.parentNode!;
+    }
+    return node as HTMLElement;
+}
+
 /** num to base 92 string (35[#]-126[~] ascii) */
 function numToShortStr(n :number) :string{
     let s = "";

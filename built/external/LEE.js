@@ -161,8 +161,11 @@ function __el__Fn__(tag,...args){
 
         //#region##### runtime append functions ###########//
         //create (build) element and return it
-        create(){
+        create(parentHtmlElement=null){
             let el = document.createElement(this.tag);
+            if(parentHtmlElement){
+                parentHtmlElement.appendChild(el);
+            }
             let parsedStuff = {}; //to keep data from parsed attributes
             let handleSpecialAttr = (atr)=>{
                 let val = this.attr[atr];
@@ -249,7 +252,7 @@ function __el__Fn__(tag,...args){
         }
         
         if(___Global___.___WriteFn___ == ___WRITE_FN___.create){
-            return THIS.create();
+            return THIS.create(...arguments);
         }
         else{
 

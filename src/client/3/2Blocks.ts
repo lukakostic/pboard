@@ -1,4 +1,4 @@
-
+declare type QuillDelta = {unknown_but_very_special:true};
 
 class Block{
     static _serializable_default = {text:"",children:[],tags:[],attribs:{},refCount:1,collapsed:false};
@@ -7,7 +7,7 @@ class Block{
     refCount:number;
     
     pageTitle?:string;
-    text:string;
+    text:string|QuillDelta;
 
     children:Id[];
     tags:Id[];

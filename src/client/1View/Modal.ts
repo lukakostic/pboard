@@ -15,17 +15,25 @@ class Html_Modal{
         if(!parent)parent=document.body;
         this.background_element = LEEJS.div({
                 ...(opts?.bgId && {id:opts.bgId}),
-                class:`${(opts?.bgClass) ? opts.bgClass : ""} fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50`,
+                class:`${(opts?.bgClass) ? opts.bgClass : ""} fixed inset-0 bg-black/50 flex items-center justify-center z-50`,
                 $click:(e:MouseEvent)=>{
                     if(e.target==this.background_element)
-                        this.onBgClick(e);
-            }},
+                        this.onBgClick();
+                    e.stopImmediatePropagation();
+                },
+                $keydown:(e:KeyboardEvent)=>{
+                    e.stopImmediatePropagation();
+                    if(e.key=="Escape"){
+                        this.onBgClick();
+                    }
+                }
+            },
             this.foreground_element = foregroundElement,
         )(parent);
     }
-    onBgClick(e:MouseEvent){
+    onBgClick(){
         if(this.cb_onBgClick)
-            if(this.cb_onBgClick(e)) return;
+            if(this.cb_onBgClick()) return;
         this.hide();
     }
     hide(){
@@ -36,7 +44,7 @@ class Html_Modal{
     show(){
         if(this.cb_onShow)
             if(this.cb_onShow()) return;
-        this.background_element!.style.display = "block";    
+        this.background_element!.style.display = "";    
     }
 }
 type Html_Modal_opts = {

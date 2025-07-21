@@ -39,6 +39,13 @@ function castIsnt(obj: any, ...isnt: any){
     return obj;
 }
 
+function getElement(node:Node):HTMLElement{
+    while(node.nodeType != Node.ELEMENT_NODE){
+        node = node.parentNode!;
+    }
+    return node as HTMLElement;
+}
+
 /** num to base 92 string (35[#]-126[~] ascii) */
 function numToShortStr(n :number) :string{
     let s = "";
@@ -336,6 +343,9 @@ type SearchStatistics = Error;
 declare var PAGES : any;
 declare var Server : any;
 
+// print current working directory
+console.log("Current working directory:", Deno.cwd());
+
 const FILESPATH = `../FILES`; // we are in built/   so go up once.
 const FILE = {
     PROJECT :           `${FILESPATH}/PROJECT`,
@@ -580,7 +590,7 @@ function readFile(path:string){
 
 
 function client_loadTag(blockId:Id,depth:number){
-    return {blockId:readFile(FILE.TAGS(blockId))};
+    return {[blockId]:readFile(FILE.TAGS(blockId))};
 }
 function client_loadBlock(blockId:Id,depth:number){
     console.log("Loading block:",blockId,depth);

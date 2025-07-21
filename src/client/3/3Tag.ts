@@ -5,7 +5,7 @@ class Tag{
     name : string | null; // null ako preuzima ime od rootBlock.
     rootBlock? : Id; //ako je tag baziran na bloku
 
-    parentTagId:Id;
+    parentTagId:Id; // could be tag, or page (if page then its page local)
     childrenTags:Id[];
     blocks:Id[];
     attribs:objectA;

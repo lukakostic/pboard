@@ -21,6 +21,12 @@ function castIsnt(obj, ...isnt) {
     for(let i = 0, il = isnt.length; i < il; i++)if (obj === isnt[i]) throw new Error("Cast failed.");
     return obj;
 }
+function getElement(node) {
+    while(node.nodeType != Node.ELEMENT_NODE){
+        node = node.parentNode;
+    }
+    return node;
+}
 /** num to base 92 string (35[#]-126[~] ascii) */ function numToShortStr(n) {
     let s = "";
     if (n < 0) {
@@ -253,6 +259,8 @@ const CMsg_backup = _MakeMsg(Msg_backup);
 import { serveDirWithTs } from "jsr:@ayame113/ts-serve";
 //https://github.com/ayame113/ts-serve
 import * as fs from "jsr:@std/fs";
+// print current working directory
+console.log("Current working directory:", Deno.cwd());
 const FILESPATH = `../FILES`; // we are in built/   so go up once.
 const FILE = {
     PROJECT: `${FILESPATH}/PROJECT`,
@@ -472,7 +480,7 @@ function readFile(path) {
 }
 function client_loadTag(blockId, depth) {
     return {
-        blockId: readFile(FILE.TAGS(blockId))
+        [blockId]: readFile(FILE.TAGS(blockId))
     };
 }
 function client_loadBlock(blockId, depth) {

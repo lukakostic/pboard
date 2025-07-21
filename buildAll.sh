@@ -2,7 +2,8 @@
 
 shopt -s extglob
 
-bash ./deleteAll.sh
+#bash ./resetProject.sh ##############?
+
 
 #bash ./src_buildSys/execute.sh    ### ne treba nam vise codegen
 

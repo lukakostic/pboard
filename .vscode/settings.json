@@ -5,7 +5,7 @@
           {
             // Run whenever any file is saved
             "match": "src/*/.*",
-            "cmd": "bash compile.sh"
+            "cmd": "bash buildAll.sh"
           }
         ]
       },

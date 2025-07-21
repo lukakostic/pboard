@@ -39,6 +39,13 @@ function castIsnt(obj: any, ...isnt: any){
     return obj;
 }
 
+function getElement(node:Node):HTMLElement{
+    while(node.nodeType != Node.ELEMENT_NODE){
+        node = node.parentNode!;
+    }
+    return node as HTMLElement;
+}
+
 /** num to base 92 string (35[#]-126[~] ascii) */
 function numToShortStr(n :number) :string{
     let s = "";
@@ -353,6 +360,7 @@ const BlkFn = {
     // },
     async RemoveTagFromBlock(blockId:Id,tagId:Id)
     { 
+        BLOCKS_assertId(blockId); TAGS_assertId(tagId);
         const t = await TAGS(tagId,0);
         const ti = t.blocks.indexOf(blockId);
         if(ti!=-1){
@@ -368,6 +376,7 @@ const BlkFn = {
     },
     async RemoveAllTagsFromBlock(blockId:Id)
     {  ////let $$$CL_clone;
+        BLOCKS_assertId(blockId);
         const b = await BLOCKS(blockId,0);          ////if($CL&&!b)return;
         for(let i = 0; i<b.tags.length; i++){
             const t = await TAGS(b.tags[i],0);          ////if($CL&&!t)continue;
@@ -379,6 +388,7 @@ const BlkFn = {
     },
     async HasTagBlock(tagId:Id,blockId:Id/*,  $CL=false*/):Promise<boolean>
     {  //let $$$CL_local;
+        BLOCKS_assertId(blockId); TAGS_assertId(tagId);
         //if(!$CL) return TAGS[tagId].blocks.indexOf(blockId)!=-1;
         //if($CL){
             if(_TAGS[tagId]) return _TAGS[tagId].blocks.indexOf(blockId)!=-1;
@@ -389,6 +399,8 @@ const BlkFn = {
     },
     async TagBlock(tagId:Id,blockId:Id)/*:boolean*/
     {  //let $$$CL_clone;
+        BLOCKS_assertId(blockId); TAGS_assertId(tagId);
+
         if(await this.HasTagBlock(tagId,blockId/*, $CL*/)) return;// false;
         (await TAGS(tagId)).blocks.push(blockId);
         _TAGS[tagId]!.DIRTY();
@@ -398,7 +410,8 @@ const BlkFn = {
     },
     async DeleteBlockOnce(id:Id)
     {  ////let $$$CL_diff;
-        if(_BLOCKS[id]==undefined) return false;
+        BLOCKS_assertId(id);
+
         const b = await BLOCKS(id,0);
         // console.error("delete once",id,b.refCount);
         b.refCount--;
@@ -412,7 +425,8 @@ const BlkFn = {
     },
     async DeleteBlockEverywhere(id:Id)
     {  ////let $$$CL_diff;
-        if(_BLOCKS[id]==undefined) return;
+        BLOCKS_assertId(id);
+
         const b = await BLOCKS(id,0);
         b.refCount=0;
         for(let i = 0; i<b.children.length;i++){
@@ -452,7 +466,10 @@ const BlkFn = {
     },
     async InsertBlockChild(parent:Id, child:Id, index:number )/*:Id[]*/
     {  ////let $$$CL_clone;
+        BLOCKS_assertId(parent); BLOCKS_assertId(child);
+        
         const p = await BLOCKS(parent);                 ////if($CL&&!p)return;
+
         const l = p.children;
         if(index >= l.length || index<0){
             l.push(child);
@@ -525,7 +542,7 @@ const DIRTY = {
         this._ = this._.filter(p=>!(p[0]==singleton && p[1]==id));// && (isDeleted?(p[2]==true):(p[2]!=true))));
         
         this._.push([singleton,id,isDeleted]);
-        // console.error("Marked: ",[singleton,id,isDeleted]);
+        console.warn("Marked: ",[singleton,id,isDeleted]);
     },
     evalStringResolve(singleton:string,id?:any):string{
         let finalEvalStr = singleton;
@@ -643,6 +660,333 @@ Delete : delete block
     }
 }
 
+
+
+//######################
+// File: client/0/MyQuill.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/0/MyQuill.ts
+//######################
+
+//import { Quill } from "../../external/quill-js/quill.js";
+
+const Embed = Quill.import('blots/embed')
+// const Block = Quill.import('blots/block');
+const BlockEmbed = Quill.import('blots/block/embed');
+const Inline = Quill.import('blots/inline');
+const InlineBlot = Quill.import('blots/block');
+
+
+class InlineBtnBlot extends Embed {
+  static create(value) {
+    let node = super.create();
+
+    node.setAttribute('onclick', value.url);
+    // node.setAttribute('target', '_blank')
+    node.innerText = value.text;
+    node.classList.add('btn','btn-primary');
+
+    return node;
+  }
+
+  // let value be hash containing both href and text
+  static value(node) {
+    return { url: node.getAttribute('onclick'), text: node.innerText };
+  }
+
+//   static formats(node) {
+//     return node.getAttribute('href')
+//   }
+}
+InlineBtnBlot.blotName = 'inlineBtn';
+InlineBtnBlot.tagName = 'button';
+InlineBtnBlot.className = 'inlineBtn'; // cant have multiple :(
+
+Quill.register(InlineBtnBlot);
+
+function getBlockElement(node:Node) :HTMLElement|null{
+    return getElement(node).nearest('[data-b-id]');
+}
+function getBtn(eventTarget:Node){
+    return getElement(eventTarget).closest('button');
+}
+function getNodeData(node:Node){
+    node = getElement(node).closest('data-node-data');
+    let data = node.getAttribute('data-node-data');
+}
+
+
+
+class LineBtnBlot extends BlockEmbed {
+    static blotName = 'lineBtn';
+    static tagName = 'button';
+    static className = 'lineBtn';
+  
+    static create(value) {
+        let node = super.create();
+    
+        node.setAttribute('onclick', value.url);
+        // node.setAttribute('target', '_blank')
+        node.innerText = value.text;
+        node.classList.add('btn','btn-primary');
+    
+        return node;
+      }
+    
+      // let value be hash containing both href and text
+      static value(node) {
+        return { url: node.getAttribute('onclick'), text: node.innerText };
+      }
+
+    // static create(value) {
+    //   const node = super.create();
+    // //   node.dataset.id = id;
+
+    //   // Allow twitter library to modify our contents
+    // //   twttr.widgets.createTweet(id, node);
+    //   return node;
+    // }
+  
+    // static value(node) {
+    //   return node.dataset.id;
+    // }
+}
+Quill.register(LineBtnBlot);
+
+
+
+type BlockEmbed_LineBtnBlot_Value = {
+  text:string|'',
+  id:Id
+};
+class BlockEmbed_LineBtnBlot extends BlockEmbed {
+  static blotName = 'blockEmbed_lineBtn';
+  static tagName = 'button';
+  static className = 'blockEmbed_lineBtn';
+
+  static create(value:BlockEmbed_LineBtnBlot_Value) {
+      let node = super.create();
+  
+      node.setAttribute('onclick', `alert("${value.id}");`);
+      // node.setAttribute('target', '_blank')
+  // //   node.dataset.id = id;
+      node.setAttribute('data-id', value.id);
+      node.setAttribute('data-text', value.text || "");
+      node.innerText = value.text || "<null>";
+      node.classList.add('btn','btn-primary');
+  
+      return node;
+    }
+  
+    // let value be hash containing both href and text
+    static value(node) :BlockEmbed_LineBtnBlot_Value{
+      return { id: node.getAttribute('data-id'), text: node.getAttribute('data-text') };
+    }
+}
+Quill.register(BlockEmbed_LineBtnBlot);
+
+
+
+
+class ExpandableTextBlot extends BlockEmbed {
+  static blotName = 'expandable';
+  static tagName = 'div';
+  static className = 'expandable-text';
+
+  // constructor(node2) {
+  //   console.log("constructor!!!!!!!",node2);
+  //   // super(node);
+  //   let node = super.create(node2);
+  //   this.button = document.createElement('span');
+  //   this.button.classList.add('expand-button');
+  //   this.button.innerHTML = '\u25C0'; // Arrow left (collapsed)
+  //   this.button.contentEditable = 'false';
+  //   this.button.addEventListener('click', this.toggleExpand.bind(this));
+    
+  //   this.contentSpan = document.createElement('span');
+  //   this.contentSpan.classList.add('expandable-content');
+    
+  //   while (node.firstChild) {
+  //     this.contentSpan.appendChild(node.firstChild);
+  //   }
+    
+  //   node.appendChild(this.button);
+  //   node.appendChild(this.contentSpan);
+    
+  //   this.expanded = node.dataset.expanded === 'true';
+  //   this.updateVisibility();
+  // }
+
+  // toggleExpand() {
+  //   this.expanded = !this.expanded;
+  //   this.domNode.dataset.expanded = this.expanded;
+  //   this.updateVisibility();
+  // }
+
+  // updateVisibility() {
+  //   this.contentSpan.contentEditable = this.expanded.toString();
+  //   this.contentSpan.style.display = this.expanded ? 'inline' : 'none';
+  //   this.button.innerHTML = this.expanded ? '\u25B2' : '\u25C0'; // Arrow up when expanded
+  // }
+
+  static create(value) {
+    console.log("Static create",value);
+    let node = super.create(value);
+    node.dataset.expanded = value.collapsed ? 'false' : 'true';
+    
+    let button = document.createElement('div');
+    node.appendChild(button);
+
+    button.classList.add('expand-button');
+    button.innerHTML = '[\u25C0]'; // Arrow left (collapsed)
+    button.contentEditable = 'false';
+    
+    //button.addEventListener('click', this.toggleExpand.bind(this));
+    // button.addEventListener('click', this.toggleExpand.bind(this));
+    
+
+    let contentSpan = document.createElement('span');
+    contentSpan.classList.add('expandable-content');
+    contentSpan.appendChild(document.createTextNode(value.text));
+    contentSpan.contentEditable = 'true'; // Allow editing the content
+    contentSpan.style.display = value.collapsed ? 'none' : 'inline'; // Hide content if collapsed
+    node.appendChild(contentSpan);
+
+    node.setAttribute('contenteditable', 'false'); // Make the whole node non-editable
+
+    button.addEventListener('click', () => {
+      // Toggle the collapsed state
+      value.collapsed = !value.collapsed;
+      node.dataset.expanded = value.collapsed ? 'false' : 'true';
+      // Update the content visibility
+      contentSpan.style.display = value.collapsed ? 'none' : 'inline';
+      // Update the button text
+      button.innerHTML = value.collapsed ? '[\u25C0]' : '[\u25B2]'; // Arrow up when expanded
+    });
+
+    node.style = `display: inline-block; padding: 5px; border: 1px solid #ccc; border-radius: 4px; background-color: #f9f9f9;`;
+    return node;
+  }
+
+  static formats(node) {
+    return {
+      collapsed: node.dataset.expanded !== 'true',
+      text: node.querySelector('.expandable-content')?.textContent || '',
+    };
+  }
+  //static formats() { return false; }
+
+  // format(name, value) {
+  //   if (name === 'expandable' && typeof value === 'object') {
+  //     this.domNode.dataset.expanded = value.collapsed ? 'false' : 'true';
+  //     this.contentSpan.textContent = value.text;
+  //     this.updateVisibility();
+  //   } else {
+  //     super.format(name, value);
+  //   }
+  // }
+
+  static value(node) {
+    return {
+      collapsed: node.dataset.expanded !== 'true',
+      text: node.querySelector('.expandable-content')?.textContent || '',
+    };
+  }
+}
+Quill.register({ 'formats/expandable': ExpandableTextBlot });
+//Quill.register(ExpandableTextBlot);
+
+
+
+
+class PboardInlineBlock extends Embed {
+  static blotName = 'inline-pboard-block';
+  static tagName = 'div';
+  static className = 'inline-pboard-block';
+
+
+  static create(value) {
+    console.log("Static create",value);
+    let node = super.create(value);
+    node.dataset.expanded = value.collapsed ? 'false' : 'true';
+    node.setAttribute('data-pboard-board-id',value.id); //node.setAttribute('pboard-board-id', value.id);
+    //node.setAttribute('contenteditable', 'false'); // Make the whole node non-editable
+    node.contentEditable = 'false'; // Make the whole node non-editable
+
+    let button = document.createElement('div');
+    node.appendChild(button);
+    button.classList.add('expand-button');
+    button.innerHTML = '[\u25C0]'; // Arrow left (collapsed)
+    button.style.userSelect = 'none';
+  
+    
+    let content = document.createElement('div');
+    node.appendChild(content);
+    content.classList.add('pboard-board-content');
+    content.style.userSelect = 'text';
+    content.contentEditable = 'false'; // Make the content non-editable
+
+    button.addEventListener('click', () => {
+      // Toggle the collapsed state
+      value.collapsed = !value.collapsed;
+      node.dataset.expanded = value.collapsed ? 'false' : 'true';
+      // Update the content visibility
+      //contentSpan.style.display = value.collapsed ? 'none' : 'inline';
+      // Update the button text
+      button.innerHTML = value.collapsed ? '[\u25C0]' : '[\u25B2]'; // Arrow up when expanded
+
+      if(value.collapsed){
+        content.innerHTML = "";
+        node.style.display = "inline-block";
+        node.style.width = "auto";
+        // node.style.lineHeight = "0px";
+      }else{
+        node.style.display = "block";
+        node.style.width = "100%";
+        // node.style.lineHeight = "normal";
+
+        (async ()=>{
+          let bv = new Block_Visual( await BLOCKS(value.id), content );
+          bv.updateAll();
+          content.querySelector('.ql-editor').contentEditable = 'false';
+        })();
+
+        // content.innerHTML = `Loading board ${value.id}...`;
+        // setTimeout(() => {  content.innerHTML = `Board ${value.id} content loaded.`;}, 1000);
+      }
+    });
+    content.addEventListener('mousedown', (ev)=>{
+      let editor = content.querySelector('.ql-editor');
+      if(editor) editor.contentEditable = 'true';
+      console.log("CLIIIIIIIIIIIIIIIIIIIIIIIICK");
+    });
+    content.addEventListener('focusout', (ev)=>{
+      let editor = content.querySelector('.ql-editor');
+      if(editor) editor.contentEditable = 'false';
+      console.log("BLUUUUUUUUUUUUUR");
+    });
+
+    node.style = `display: inline-block; line-height: 0px; user-select: none; padding: 5px; border: 1px solid #ccc; border-radius: 4px; background-color: #f9f9f9;`;
+    //node.style = `padding: 5px; border: 1px solid #ccc; border-radius: 4px; background-color: #f9f9f9;`;
+    console.log("Created node",node,"content",content);
+    
+    return node;
+  }
+
+  static formats(node) {
+    return {
+      collapsed: node.dataset.expanded !== 'true',
+      id: node.getAttribute('data-pboard-board-id'),
+    };
+  }
+
+  static value(node) {
+    return {
+      collapsed: node.dataset.expanded !== 'true',
+      id: node.getAttribute('data-pboard-board-id'),
+    };
+  }
+}
+Quill.register({ 'formats/inline-pboard-block': PboardInlineBlock });
 
 
 //######################
@@ -765,6 +1109,113 @@ Server.__WebSock.onmessage = (event) => {
 
 
 //######################
+// File: client/1View/0ContextMenu.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/1View/0ContextMenu.ts
+//######################
+
+/*
+Kontekst meniji su dinamicni zavisno od onog na sta klikcemo.
+*/
+
+declare type TippyJs = any;
+declare var tippy : any;
+
+let contextmenuHandlers :{[name:string]:
+        ((target:EventTarget)=>ContextMenuItem[]|null|undefined) |
+        ((                  )=>ContextMenuItem[]|null|undefined)
+    } = {};
+let contextMenuInstance :TippyJs|null = null;
+
+type ContextMenuItem = readonly [
+    text:string, clickFn:Function, 
+    details?:{attribs?:any, children?:any[], tooltip?:string, classMod?:((classesStr:string)=>string)|(()=>string)}
+];
+const Html_ContextMenu = ( (items:ContextMenuItem[]) => 
+    LEEJS.div(LEEJS.$I`context-menu`, {style:"display: none;"},
+        items.map(it=>
+            LEEJS.button({class:(it[2]?.classMod??(x=>x))("context-menu-item btn btn-outline-light btn-sm"), tabindex:"-1", type:'button',
+                ...( it[2]?.attribs ?? {}), 
+                ...( (it[2]?.tooltip) ? {"data-tooltip":it[2].tooltip,"data-tooltip-side":"right"} : {} ),
+                $click:(e:MouseEvent)=>{closeContextMenu();it[1](e);}
+            }, it[0], ...(it[2]?.children ?? []))
+        ),
+));
+
+function applyTooltipsGlobally(){
+    document.querySelectorAll('[data-tooltip]:not([data-tippy-loaded])').forEach(e=>{
+        e.setAttribute('data-tippy-loaded','1');
+        let side = e.getAttribute('data-tooltip-side') || 'bottom';
+        tippy(e,{content:e.getAttribute('data-tooltip'),zIndex:99999,placement:side,allowHTML:true,touch:'hold'});
+    });
+}
+setInterval(()=>{
+    applyTooltipsGlobally();
+},400);
+function closeContextMenu(){
+    if(contextMenuInstance)
+        contextMenuInstance.hide();
+}
+
+// document.addEventListener("DOMContentLoaded", function() {
+
+document.addEventListener("contextmenu", function(event) {
+    if(!(event.target)) return;
+    if(openContextMenu(event.target as HTMLElement, event.clientX, event.clientY))
+        event.preventDefault();
+});
+document.addEventListener("click", function(event:MouseEvent) {
+    if (contextMenuInstance && !(event.target as HTMLElement).closest(".tippy-box")) {
+        closeContextMenu();
+    }
+});
+
+function openContextMenu(targetElement:HTMLElement , x:number, y:number){
+    let target = targetElement.closest("[data-contextmenu]");
+    if(!target) return;
+    let cmInfo = target.getAttribute("data-contextmenu");
+    if(!cmInfo) return;
+    let fn = contextmenuHandlers[cmInfo];
+    if(!fn) return;
+    let items = fn(target);
+    if(!items && Array.isArray(items)==false) return;
+
+    if (contextMenuInstance) {
+        contextMenuInstance.hide();
+        contextMenuInstance.destroy();
+    }
+
+    const menuContent = Html_ContextMenu(items)();
+    menuContent.style.display = "";
+    
+    contextMenuInstance = tippy(document.body, {
+        content: menuContent, 
+        allowHTML: true,
+        interactive: true,
+        trigger: "manual",
+        duration: [100,50],
+        theme: "light-border",
+        placement: "right-start",
+        getReferenceClientRect: () => ({
+            width: 0, height: 0,
+            top: y, bottom: y,
+            left: x, right: x,
+        })
+    });
+
+    contextMenuInstance.show();
+    menuContent.addEventListener("keydown", function(event:KeyboardEvent) {
+        if (event.key === "Escape" && contextMenuInstance) {
+            closeContextMenu();
+        }
+    });
+    setTimeout(() => {
+        menuContent.querySelector('.context-menu-item').focus();
+    }, 10);
+    return true;
+}
+
+
+//######################
 // File: client/1View/0Window.ts
 // Path: file:///data/_Projects/pboardNotes_latest/src/client/1View/0Window.ts
 //######################
@@ -777,7 +1228,8 @@ class Window_Tab {
 
     constructor(
         rootWindow : Window ,
-        contentsWindow : Window){
+        contentsWindow : Window
+    ){
             this.rootWindow = rootWindow;
             this.contentsWindow = contentsWindow;
         }
@@ -793,14 +1245,38 @@ class WindowPB {
 
     html(){
         LEEJS.div( {class:"window"},
-            LEEJS.div({class:"header"}),
-            LEEJS.div({class:"body"},  // is flow , so tabs can be vertical or horizontal.
-                LEEJS.div({class:"tabs"}),
-                LEEJS.div({class:"contents"}),
+            LEEJS.div({class:"window-header"}),
+            LEEJS.div({class:"window-body"},  // is flow , so tabs can be vertical or horizontal.
+                LEEJS.div({class:"window-tabs"}),
+                LEEJS.div({class:"window-contents"}),
             ),
         );
     }
 }
+
+
+type WindowNode = WindowPB | WindowSplit;
+class WindowSystem {
+    root : WindowNode;
+
+    constructor( 
+        root : WindowNode 
+    ){
+        this.root = root;
+    }
+}
+class WindowSplit {
+    vertical : boolean;   // split direction
+    windows : WindowNode[];
+
+    constructor(
+        vertical : boolean   // split direction
+    ){
+        this.vertical = vertical;
+        this.windows = [];
+    }    
+}
+
 
 //######################
 // File: client/1View/1View.ts
@@ -811,6 +1287,12 @@ interface IView {
 
 };
 
+contextmenuHandlers['page']=(()=>[
+    ["Backup",()=>{
+        alert("AYO");
+    }] as const
+]);
+document.body.setAttribute('data-contextmenu','page');
 
 async function selectBlock(b:Block_Visual|null,editText:boolean|null=null){
     // if(selected_block==b && editText===inTextEditMode) return;
@@ -844,10 +1326,10 @@ async function selectBlock(b:Block_Visual|null,editText:boolean|null=null){
         if(selected_block != null){
             if(editText || (editText===null && inTextEditMode)){
                 inTextEditMode = true;    
-                FocusElement(selected_block!.editor_inner_el()!);
+                selected_block!.focus(inTextEditMode);
             }else{
                 inTextEditMode = false;
-                FocusElement(selected_block!.el!);
+                selected_block!.focus(inTextEditMode);
             }
         }
         updateSelectionVisual();
@@ -855,37 +1337,6 @@ async function selectBlock(b:Block_Visual|null,editText:boolean|null=null){
     },2)));
 }
 
-function FocusElement(el:HTMLElement){
-    /*
-    Check if currently active element is already "el" or some child of el. If so, return.
-    Else, blur currently active, and focus to el instead.
-    */console.log("FOCUS",el);
-    if(document.activeElement){
-        if(document.activeElement == el)
-            return;
-
-        if(el.contains(document.activeElement)){
-            // is textbox selected?
-            if(selected_block!.editor_inner_el()!.contains(document.activeElement)){
-                if(inTextEditMode){
-                    return; // its ok to select it
-                }
-                else
-                {} // blur it!
-            }
-        }
-        
-        (document.activeElement! as HTMLElement).blur();
-    }
-    
-    // el.dispatchEvent(new FocusEvent("focus"));
-    // console.error("FOCUSING ",el);
-    el.focus();
-
-
-
-    
-}
 
 //######################
 // File: client/1View/9Logseq/3Page_Visual.ts
@@ -899,8 +1350,11 @@ User is viewing a single page.
 class Page_Visual{
     pageId : Id;
     children : Block_Visual[];
-    childrenHolderEl:HTMLElement;
+    childrenHolderEl : HTMLElement;
     alreadyRendered : boolean;
+
+    titleEl : HTMLInputElement|null = null; // title element, if board has a title.
+
     constructor(){
         this.pageId = "";
         this.children = [];
@@ -984,7 +1438,6 @@ class Page_Visual{
     async openPage(newPageId:Id){
         const maxUncollapseDepth = 999;
 
-        this.childrenHolderEl = STATIC.blocks;
         await loadBlock(newPageId,maxUncollapseDepth);
         this.pageId = newPageId;
         this.children = [];
@@ -999,7 +1452,11 @@ class Page_Visual{
         const p = this.page();
         this.children = [];
         document.title = p.pageTitle ?? "";
+
+        this.childrenHolderEl = STATIC.blocks;
         this.childrenHolderEl.innerHTML = ""; // clear
+
+
         /*
         async function makeBlockAndChildrenIfExist(bv:Block_Visual){
             //bv already exists and is created. Now we need to create visuals for its children (and theirs).
@@ -1016,7 +1473,27 @@ class Page_Visual{
                 }
             }
         }*/
-        
+        if(p.pageTitle !== undefined){
+            
+            this.titleEl = STATIC.pageView_Title as HTMLInputElement;
+            STATIC.pageView_Title.style.display = "inline-block"; // show title input if page has a title.            
+            
+            this.titleEl.value = p.pageTitle;
+            let changeEv = async (e:Event)=>{
+                if(p.pageTitle == this.titleEl!.value) return; // no change.
+                p.pageTitle = this.titleEl!.value;
+                console.log("Page title changed to:", p.pageTitle);
+                p.DIRTY();
+                this.setDocumentURI();
+            };
+            this.titleEl.oninput = changeEv;
+            this.titleEl.onchange = changeEv;
+            this.titleEl.onblur = changeEv;
+        }else{
+            this.titleEl = null;
+            STATIC.pageView_Title.style.display = "none"; // hide title input if no title.
+        }
+
         this.renderChildren();
     }
     updateBlocksById(id:Id, action:null/*unknown*/|'deleted'|'edited'=null){
@@ -1044,13 +1521,13 @@ class Page_Visual{
 declare var LEEJS : any;
 type TMDE_InputEvent = {content:string,lines:string[]};
 
-let view :Page_Visual = new Page_Visual();;
+let view :Page_Visual = new Page_Visual();
 
 let selected_block :Block_Visual|null = null;
 let inTextEditMode = false;
 
 
-const el_to_BlockVis = {_: new WeakMap<HTMLElement,Block_Visual>(),
+var el_to_BlockVis = {_: new WeakMap<HTMLElement,Block_Visual>(),
     get(key:HTMLElement , allowNull = false){
         let r = this._.get(key) ?? null;
         if(!allowNull) assert_non_null(key,"key");
@@ -1085,16 +1562,18 @@ const ACT /*"Actions"*/ = {
     },
 
     // marking already handled events when they bubble
-    __handledEvents : new Array<Event>(10),  //set of already handled events.
-    __handledEvents_circularIdx : 0    as number, // it wraps around so handledEvents is a circular buffer
+    // __handledEvents : new Array<Event>(10),  //set of already handled events.
+    // __handledEvents_circularIdx : 0    as number, // it wraps around so handledEvents is a circular buffer
+    
     // new events get added like so:  handledEvents[circIdx=(++circIdx %n)]=ev;  so it can keep at most n last events.
     setEvHandled(ev:Event){
-        this.__handledEvents[
-            this.__handledEvents_circularIdx=( ++this.__handledEvents_circularIdx %this.__handledEvents.length)
-        ] = ev;
+        // this.__handledEvents[
+        //     this.__handledEvents_circularIdx=( ++this.__handledEvents_circularIdx %this.__handledEvents.length)
+        // ] = ev;
+        (ev as any).handled_already = true;
     },
     isEvHandled(ev:Event){
-        return this.__handledEvents.indexOf(ev)!==-1;
+        return (ev as any).handled_already;// || (this.__handledEvents.indexOf(ev)!==-1);
     }
 
 };
@@ -1103,10 +1582,12 @@ const STATIC = {
     style_highlighter : document.getElementById('highlighterStyle')!,
     blocks : document.getElementById('blocks')!,
     pageView : document.getElementById('pageView')!,
+    pageView_Title : document.getElementById('pageView-title')!,
 };
 
 function propagateUpToBlock(el:HTMLElement,checkSelf=true):Block_Visual|null{
-    
+    // ovo bi moglo putem el.closest(query) umesto da rucno idem parentElement
+
     if(checkSelf && el.hasAttribute("data-b-id"))
         return assert_non_null(el_to_BlockVis.get(el) , "el->bv",DEBUG);
     
@@ -1130,8 +1611,13 @@ function updateSelectionVisual(){
     }
     div[data-b-id="${selected_block!.blockId}"]>div.editor.TinyMDE{\
     background-color: var(--block-editor-bg-selected-color) !important;\
+    }`
+    +(inTextEditMode?
+    `
+    div[data-b-id="${selected_block!.blockId}"]>div[role="toolbar"]{
+        display:contents; /*ili block*/
     }
-    `;
+    `:"");
 }
 
 
@@ -1143,6 +1629,7 @@ async function CheckAndHandle_PageNoBlocks(){
     if(view.pageId == "") return;
     let p = (await BLOCKS(view.pageId));
     if(p.children.length>0)return;
+    console.log("CheckAndHandle_PageNoBlocks",view.pageId);
     NewBlockInside(null);
 }
 
@@ -1323,6 +1810,7 @@ async function NewBlockAfter(thisBlock:Block_Visual){
     return blockVis;
 }
 async function NewBlockInside(thisBlockVis:Block_Visual|Page_Visual|null , idx=-1){
+    console.log("NewBlockInside",thisBlockVis,idx);
     if(thisBlockVis==null) thisBlockVis = view!;
     let parentBlock = thisBlockVis.id();
     let parentHolder = thisBlockVis.childrenHolderEl;
@@ -1351,24 +1839,22 @@ async function NewBlockInside(thisBlockVis:Block_Visual|Page_Visual|null , idx=-
 
 STATIC._body.addEventListener('click',(e:MouseEvent)=>{
     if(!(e.target) || propagateUpToBlock(e.target as HTMLElement) == null){
+        if(e.target.closest(".doesnt-cancel-selection")!== null) return; // if clicked on something that should not cancel selection, then do not cancel.
         selectBlock(null);
     }
 });
 STATIC._body.addEventListener('keydown',(e:KeyboardEvent)=>{
-    if(e.key == 'Tab'){// && e.ctrlKey){
+    if(e.key == 'F1'){// && e.ctrlKey){
         SEARCHER.toggleVisible();
         e.preventDefault();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
     }
 });
 STATIC.blocks.addEventListener('keydown',async (e:KeyboardEvent)=>{
-    console.log("BLOCKS KEYDOWN11",e, (e as any).handled_in_editor);
+    console.log("BLOCKS KEYDOWN11",e, ACT.isEvHandled(e));
     if(ACT.isEvHandled(e)) return;
     ACT.setEvHandled(e);
     console.log("BLOCKS KEYDOWN22",e);
-
-    const handled_in_editor = (e as any).handled_in_editor;
-    if(handled_in_editor) return;
 
     HELP.logCodeHint("Navigation","Listeners/handlers for navigation keys.");
 
@@ -1401,6 +1887,7 @@ STATIC.blocks.addEventListener('keydown',async (e:KeyboardEvent)=>{
             ShiftFocus(selected_block,e.shiftKey?SHIFT_FOCUS.above:SHIFT_FOCUS.below);
         }
     }else if(e.key == 'Escape'){
+        console.log("ESCAPE view");
         selectBlock(null);
     }else if(e.key=='Enter'){
 
@@ -1462,10 +1949,44 @@ STATIC.blocks.addEventListener('keydown',async (e:KeyboardEvent)=>{
 
 
 // declare var TinyMDE : any;
-declare type QuillJS = any;
-declare var Quill : any;
+type Quill = any;
+declare var Quill : Quill;
 declare var LEEJS : any;
 
+
+let showEditorToolbar = false;
+
+contextmenuHandlers["block"] = (target:EventTarget)=>{
+    if(!target) return null;
+    let blockId_el = (target as HTMLElement).closest('[data-b-id]') as HTMLElement;
+    if(!blockId_el) return null;
+    let blockVisual = el_to_BlockVis.get(blockId_el);
+    if(!blockVisual) return null;
+    let blockId = blockVisual.blockId;
+    let block = _BLOCKS[blockId];
+    if(!block) return null;
+    return [
+        ["Copy id",()=>{
+            navigator.clipboard.writeText(blockId);
+        }],
+        ["Collapse/Expand",()=>blockVisual.collapseTogle()],
+        ["Tags",()=>TAGGER.toggleVisible(true,blockVisual),{tooltip:"Open tag manager for this block."}],
+        
+        ["Toggle toolbar",()=>{
+            showEditorToolbar = !showEditorToolbar;
+
+        }],
+        ["PageView this",()=>view.openPage(block.id)],
+        ["GetText as json",()=>alert(JSON.stringify(block.text)),{tooltip:"See text of this block as json."}],
+        ["GetText",()=>alert(blockVisual.editor.getText()),{tooltip:"See text of this block."}],
+        ["Delete (!!)",()=>blockVisual.DeleteBlock(true),{tooltip:"Delete this instance.</br>Other references to this block wont be deleted.",classMod:((c:string)=>c.replace('btn-outline-light','btn-outline-danger'))}],
+        ["Delete all copies (!!)",()=>blockVisual.DeleteBlockEverywhere(true),{tooltip:"Delete any and all copies of this block.",classMod:((c:string)=>c.replace('btn-outline-light','btn-outline-danger'))}],
+    ];
+};
+contextmenuHandlers["block-editor"] = (target:EventTarget)=>{
+    if(inTextEditMode) return null;
+    return contextmenuHandlers["block"]!(target);
+};
 // RegClass(Delta);
 class Block_Visual{
     blockId:Id;
@@ -1475,7 +1996,7 @@ class Block_Visual{
 
     // html elements:
     el:HTMLElement;  //block element
-    editor:QuillJS;  //editor inside block
+    editor:Quill;  //editor inside block
     childrenHolderEl:HTMLElement;
 
     finished:boolean; //was it fully rendered or no (just constructed (false) or renderAll called also (true))
@@ -1484,6 +2005,15 @@ class Block_Visual{
         // return this.editor.e; // TinyMDE
         return this.editor.root as HTMLElement; //Quill.js
         //return this.el.querySelector('.editor > .ql-editor')! as HTMLElement | null; // Quill.js
+    }
+    editor_firstEl(){ 
+        let arrayOrLeaf = this.editor.getLeaf(0);
+        let node : Node|null = null;
+        if(Array.isArray(arrayOrLeaf)) node = arrayOrLeaf[0].domNode; // domNode returns text node instead of <p>
+        else node = arrayOrLeaf.domNode;  // domNode returns text node instead of <p>
+        while(node?.nodeType == Node.TEXT_NODE)
+            node = node.parentNode;
+        return node as HTMLElement;
     }
     constructor(b:Block,parentElement?:HTMLElement , collapsed = true){
         this.blockId = b.id;
@@ -1495,9 +2025,11 @@ class Block_Visual{
             class:"block",
             $bind:b, $bindEvents:b, "data-b-id":b.id, 
             tabindex:"-1",
-        },[LEEJS.div(LEEJS.$I`editor`),
-            LEEJS.div(LEEJS.$I`children`)])
-        .appendTo(parentElement ?? STATIC.blocks) as HTMLElement;
+            "data-contextmenu":"block",
+        },[ 
+            LEEJS.div(LEEJS.$I`editor`,{"data-contextmenu":"block-editor"}),
+            LEEJS.div(LEEJS.$I`children`)
+        ])(parentElement ?? STATIC.blocks) as HTMLElement;
         
         el_to_BlockVis.set(this.el,this);
 
@@ -1505,15 +2037,61 @@ class Block_Visual{
 
         this.editor = new Quill(this.el.querySelector('.editor')!, {
             modules: {
-              toolbar: false,
+            //   toolbar: true,
+                toolbar: [
+                    [{ header: [1, 2, false] }],
+                    ["bold", "italic", "underline"],
+                    ["image", "video"]
+                ],
+                blotFormatter2: {
+                    //     align: {
+                    //       allowAligning: true,
+                    //     },
+                    video: {
+                        registerCustomVideoBlot: true
+                    },
+                    resize: {
+                        //       allowResizing: true,
+                        useRelativeSize: true,
+                        allowResizeModeChange: true,
+                        imageOversizeProtection: true
+                    },
+                    //     delete: {
+                    //       allowKeyboardDelete: true,
+                    //     },
+                    image: {
+                        //       allowAltTitleEdit: true,
+                        registerImageTitleBlot: true,
+                        allowCompressor: true,
+                        compressorOptions: {
+                            jpegQuality: 0.7,
+                            maxWidth: 1000
+                        }
+                    }
+                },
             },
             placeholder: "" ,
-            theme: 'snow', // or 'bubble'
+            theme: 'snow', // 'bubble'
           });
-        if(typeof b.text == 'string')
+
+          let toolbar = this.editor.getModule('toolbar');
+          toolbar.addHandler('attachment', () => {
+          
+              const range = this.editor.getSelection(true);
+              const value = { url: "Link", text: "text" }
+              
+              this.editor.insertEmbed(range.index, 'attachment', value);
+              this.editor.setSelection(range.index + value.text.length);
+          });
+          console.log(toolbar);
+          
+        if(typeof (b.text) == 'string')
             this.editor.setText(b.text);
         else
             this.editor.setContents(b.text);
+
+        // const value = { url: "getBtn(event.target).style.minHeight='300px';", text: "text" }
+        // this.editor.insertEmbed(0, 'lineBtn', value);
 
         //   new TinyMDE.Editor({ 
         //     editor:this.el.querySelector('.editor')!,
@@ -1528,12 +2106,62 @@ class Block_Visual{
         //     editor: tinyMDE,
         //   });
 
-        this.editor.root.addEventListener('keydown', function(event : KeyboardEvent) {
+        this.editor.root.addEventListener('keydown', async (event : KeyboardEvent)=>{
             // Check if the key is an arrow key
-            (event as any).handled_in_editor = true;
+            console.log("editor keydown",event);
+            const markEventHandled = ()=>{
+                ACT.setEvHandled(event);
+                console.log("editor keydown MARKED HANDLED");
+                //event.stopPropagation(); // Prevent it from bubbling up
+            };
+
             // if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
-            // event.stopPropagation(); // Prevent it from bubbling up
+            //   event.stopPropagation(); // Prevent it from bubbling up
             // }
+            
+            if (event.key === 'F4') {
+                markEventHandled();
+                const range = this.editor.getSelection(true);
+                if (range) {
+                    let id = prompt("Enter Pboard board id:");
+                    BLOCKS_assertId(id);
+
+                    const value = { collapsed: true, id: id }; // Default to collapsed
+                    this.editor.insertEmbed(range.index, 'inline-pboard-block', value);
+                    this.editor.setSelection(range.index /*+ value.text.length*/ + 1); // Move cursor after inserted text
+                }
+            }else if (event.key === 'F2') {
+                markEventHandled();
+                const range = this.editor.getSelection(true);
+                console.log("F2 pressed",range);
+                if (range) {
+                    let pre = this.editor.getContents(0, range.index);
+                    let aft = this.editor.getContents(range.index);
+                    console.log("pre",pre);
+                    console.log("aft",aft);
+                    let blVis = await NewBlockInside(this.parentOrPage(),this.index()+1);
+                    console.log("New block visual",blVis);
+                    blVis.editor.setContents(aft);
+                    this.editor.setContents(pre);
+
+                    // const value = { collapsed: true, text: "OOGA BOOGA" }; // Default to collapsed
+                    // this.editor.insertEmbed(range.index, 'expandable', value);
+                    // this.editor.setSelection(range.index + value.text.length + 1); // Move cursor after inserted text
+                }
+            }else{ //other events which shouldnt propagate to the block visual
+                //dont handle a few shortcuts
+                if(event.ctrlKey && event.key === 'Enter'){
+                }else if(event.key === 'Escape'){
+                }else{ // handle all other keys
+                    markEventHandled();
+                }
+                // if(event.key === 'Tab' || event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'ArrowLeft' || event.key === 'ArrowRight'){
+                //     markEventHandled();
+                // }
+                   
+            }
+            
+            
         });
         
         this.el.addEventListener('focus',async (ev:FocusEvent)=>{
@@ -1582,7 +2210,8 @@ class Block_Visual{
             //else selectBlock(this);
         });
 
-        this.editor.on('text-change',()=>{
+        this.editor.on('text-change',(e:any)=>{
+            console.log("TEXT_CHANGE ",e);
             //let {content_str,linesDirty_BoolArray} = ev;
             b.text = Object.setPrototypeOf(this.editor.getContents(),Object.prototype);//content_str;
             b.DIRTY();
@@ -1590,16 +2219,22 @@ class Block_Visual{
         this.el.addEventListener('keydown',async (e:KeyboardEvent)=>{
             if(ACT.isEvHandled(e)) return;
 
-            const handled_in_editor = (e as any).handled_in_editor;
+            const markEventHandled = ()=>{
+                ACT.setEvHandled(e);
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                //e.stopPropagation(); // Prevent it from bubbling up
+            };
 
             console.log("KEYDOWN",e);
 
             HELP.logCodeHint("Navigation","Listeners/handlers inside Visual_Block");
             
-            let cancelEvent = true;
             if(e.key == 'Escape'){
                 // if(document.activeElement == this.editor.e){
-                    selectBlock(this,false);
+                console.log("ESCAPE block_visual");
+                markEventHandled();
+                selectBlock(this,false);
                 // }else{
                 //     selectBlock(null);
                 // }
@@ -1609,27 +2244,28 @@ class Block_Visual{
             // }
             else if(e.key=='Enter'){
                 if(e.ctrlKey){ //insert new block below current block
+                    markEventHandled();
                     selectBlock(await NewBlockAfter(this), true);
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
                 }
                 else if(e.shiftKey){
+                    markEventHandled();
                     selectBlock(await NewBlockInside(this), true);
-                    // e.shiftKey = false;
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
-                    
-                }else{
-                    cancelEvent = false;
                 }
-
             }
-            else{
-                cancelEvent = false;
+            else if(e.key=='T'||e.key=='t'){
+                markEventHandled();
+                TAGGER.toggleVisible(true,this);
             }
-            console.log(cancelEvent);
-            if(cancelEvent)
-                {ACT.setEvHandled(e);e.preventDefault();e.stopImmediatePropagation();}
+            else if(e.key=='Q'||e.key=='q'){
+                markEventHandled();
+                openContextMenu(this.el,this.el.clientLeft,this.el.clientTop);
+            }
+            // console.log(cancelEvent);
+            // if(cancelEvent)
+            //     {
+            //         markEventHandled();
+            //         ACT.setEvHandled(e);e.preventDefault();e.stopImmediatePropagation();
+            //     }
         });
     }
 
@@ -1696,10 +2332,52 @@ class Block_Visual{
         this.updateStyle();
         view!.updateBlocksById(this.blockId);
     }
+
+    focus(focusEditor:boolean|null=null){
+        if(focusEditor===null)focusEditor=inTextEditMode;
+        let el = focusEditor? (this.editor as any /*call quill.focus()*/) : this.el; 
+        /*
+        Check if currently active element is already "el" or some child of el. If so, return.
+        Else, blur currently active, and focus to el instead.
+        */console.log("FOCUS",el);
+        if(document.activeElement){
+            if(document.activeElement == el)
+                return;
+    
+            if(this.el.contains(document.activeElement)){
+                // is textbox selected?
+                if(this.editor_inner_el()!.contains(document.activeElement)){
+                    if(inTextEditMode){
+                        return; // its ok to select it
+                    }
+                    else
+                    {} // blur it!
+                }
+            }
+            
+            (document.activeElement! as HTMLElement).blur();
+        }
+        
+        // el.dispatchEvent(new FocusEvent("focus"));
+        // console.error("FOCUSING ",el);
+        el.focus();
+    }
     
     deleteSelf(){
         el_to_BlockVis.delete(this.el);
         this.el.parentElement?.removeChild(this.el);
+    }
+    async DeleteBlock(doConfirm=true){
+        if(doConfirm && !confirm(`Delete block?`)) return;
+        await BlkFn.DeleteBlockOnce(this.blockId);
+        //TODO: update all copies of this block.
+        this.deleteSelf();
+    }
+    async DeleteBlockEverywhere(doConfirm=true){
+        if(doConfirm && !confirm(`Delete block everywhere?\nThis will delete ALL instances of this block, everywhere (embeded).`)) return;
+        await BlkFn.DeleteBlockEverywhere(this.blockId);
+        //TODO: update all copies of this block.
+        this.deleteSelf();
     }
     updateStyle(){
         if(this.collapsed)
@@ -1786,17 +2464,25 @@ class Html_Modal{
         if(!parent)parent=document.body;
         this.background_element = LEEJS.div({
                 ...(opts?.bgId && {id:opts.bgId}),
-                class:`${(opts?.bgClass) ? opts.bgClass : ""} fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50`,
+                class:`${(opts?.bgClass) ? opts.bgClass : ""} fixed inset-0 bg-black/50 flex items-center justify-center z-50`,
                 $click:(e:MouseEvent)=>{
                     if(e.target==this.background_element)
-                        this.onBgClick(e);
-            }},
+                        this.onBgClick();
+                    e.stopImmediatePropagation();
+                },
+                $keydown:(e:KeyboardEvent)=>{
+                    e.stopImmediatePropagation();
+                    if(e.key=="Escape"){
+                        this.onBgClick();
+                    }
+                }
+            },
             this.foreground_element = foregroundElement,
         )(parent);
     }
-    onBgClick(e:MouseEvent){
+    onBgClick(){
         if(this.cb_onBgClick)
-            if(this.cb_onBgClick(e)) return;
+            if(this.cb_onBgClick()) return;
         this.hide();
     }
     hide(){
@@ -1807,7 +2493,7 @@ class Html_Modal{
     show(){
         if(this.cb_onShow)
             if(this.cb_onShow()) return;
-        this.background_element!.style.display = "block";    
+        this.background_element!.style.display = "";    
     }
 }
 type Html_Modal_opts = {
@@ -1823,21 +2509,14 @@ type Html_Modal_opts = {
 
 declare var LEEJS : any;
 
-type SearcherMode = 'pages'|'tags'|'tags-local'|'blocks';
-// const SearcherMode = {
-//     __at0_pages:1, // [0]1 = pages
-//     __at0_tags:2,  // [0]2 = tags
-//     __at1_find:0,  // [1]0 = find
-//     __at1_add:1,   // [1]1 = add
-//     pages_find : [1,0],
-//     tags_find : [2,0],
-//     tags_add : [2,1]
-// }
+type SearcherMode = 'pages'|'tags'|'tags-local'|'blocks'|'pages & global-tags';
 class Searcher {
     visible:boolean;
+
     input:HTMLInputElement;
     finder:HTMLElement;
-    background:HTMLElement;
+    modal:Html_Modal;
+    
     direct:HTMLElement;
     recent:HTMLElement;
     modeChoice:HTMLInputElement;
@@ -1846,94 +2525,106 @@ class Searcher {
     recents:string[];
     mode:  SearcherMode; //null|any;
 
+    lastSearch : Promise<any>|null;
+
     constructor(){
         this.visible = true;
         this.directs = [];
         this.recents = [];
         this.mode = 'pages';
-        ///   MakeVisible {
+        this.lastSearch = null;
+
         let L = LEEJS;
-        // let inp,direct,recent;
-        
-        this.background = STATIC._body.querySelector('#finderRoot')!; //L.div(L.$I`window`,[
-          this.finder = L.div(L.$I`finder`,[
 
-            L.div({style:`display:flex;alignItems:center;`},[
-            
-            this.input = L.input(L.$I`finderSearch`,{type:"text",style:`flex:1;`,
-                    $click:(e:MouseEvent)=>{e.stopImmediatePropagation();},
-                    $input:(e:InputEvent)=>{
-                        this.Search();
-                        //TODO 
-                        WARN("throttle searches so you cancel previous searches (if unfinished)");
-                    },
-                    $keydown:async (e:KeyboardEvent)=>{
-                        if(e.key == 'ArrowDown'){
-                            e.preventDefault();
-                            e.stopImmediatePropagation();
-                            if(this.direct.children.length>0)
-                                (this.direct.children[0] as HTMLElement).focus();
-                        }else if(e.key=="Enter"){
-                            e.preventDefault();
-                            e.stopImmediatePropagation();
-                            let name = (this.input.value || "").trim();
-                            if(this.mode=='pages'){
-                                let page = await Block.newPage(name);
-                                view.openPage(page.id);
-                                this.toggleVisible(false);
-                            }else if(this.mode=='tags'){
-                                TODO("Make new tag and add it to selected_block.");
-                                let tag = await Tag.new(name);
-                                let b = selected_block;
-                                if(b){
-                                    await BlkFn.TagBlock(tag.id,b.blockId);
-                                    //b.tags.push(tag.id);
-                                    //b.DIRTY();
+        this.modal = new Html_Modal();
+        this.modal.cb_onBgClick = ()=>{this.toggleVisible(false);}
+        this.modal.createElements(
+            this.finder = L.div({class:"finder bg-white p-2"}/* rounded-2xl shadow-xl max-w-lg w-full"}*/,[
+
+                L.div({style:`display:flex;alignItems:center;`},[
+                
+                    this.input = L.input(L.$I`finderSearch.mx-2`,{type:"text",style:`flex:1;`,
+                        //$click:(e:MouseEvent)=>{e.stopImmediatePropagation();},
+                        $input:(e:InputEvent)=>{
+                            this.Search();
+                            //TODO 
+                            WARN("throttle searches so you cancel previous searches (if unfinished)");
+                        },
+                        $keydown:async (e:KeyboardEvent)=>{
+                            if(e.key == 'ArrowDown'){
+                                e.preventDefault();
+                                e.stopImmediatePropagation();
+                                if(this.direct.children.length>0)
+                                    (this.direct.children[0] as HTMLElement).focus();
+                            }else if(e.key=="Enter"){
+                                e.preventDefault();
+                                e.stopImmediatePropagation();
+                                let name = (this.input.value || "").trim();
+                                if(this.mode=='pages'){
+                                    // await last search, so we can check if there are any exact matches. If so we select it instead of making new.
+                                    await this.lastSearch;
+                                    let ids = (await Promise.all(this.directs.map(async id=>{
+                                        if(((await BLOCKS(id)).pageTitle) == name){
+                                            return id;
+                                        }else return undefined;
+                                    }))).filter(s=>s!==undefined);
+                                    if(ids.length==0){
+                                        //no exact matches, make new.
+                                        let page = await Block.newPage(name);
+                                        view.openPage(page.id);
+                                        this.toggleVisible(false);
+                                    }else if(ids.length==1){
+                                        //exact match, open existing
+                                        view.openPage(ids[0]);
+                                    }
                                 }
-                                this.toggleVisible(false);
-                            }else if(this.mode=='blocks'){
-                                //select first? idk..
-                            }else throw Error("Unknown mode")
-                        }
-                    },
-                })(),
+                                // else if(this.mode=='tags'){
+                                //     TODO("Make new tag and add it to selected_block.");
+                                //     let tag = await Tag.new(name);
+                                //     let b = selected_block;
+                                //     if(b){
+                                //         await BlkFn.TagBlock(tag.id,b.blockId);
+                                //         //b.tags.push(tag.id);
+                                //         //b.DIRTY();
+                                //     }
+                                //     this.toggleVisible(false);
+                                // }else if(this.mode=='blocks'){
+                                //     //select first? idk..
+                                // }else throw Error("Unknown mode")
+                            }
+                        },
+                    })(),
+    
+                    // make pages default selection
+                    this.modeChoice = L.select(L.$I`modeChoice.bg-white.mr-2`,{//style:`flex:1;`,
+                            value:'pages',
+                            $change:async (e:Event)=>{
+                                let val = this.modeChoice.value as SearcherMode;
+                                this.mode = val || 'pages';
+                                this.Search();
+                            }
+                        },[
+                            L.option({value:"pages"},"Pages"),
+                            L.option({value:"blocks"},"Blocks"),
+                            L.option({value:"tags"},"Tags"),
+                            L.option({value:"tags-local"},"Tags local"),
+                            L.option({value:"pages & global-tags"},"Pages & global Tags"),
+                    ])(),
+                ]),
+                L.div(L.$I`finderSuggestions`,{
+                        $bind:this, $click:this.__ItemClick.bind(this)
+                    },[ 
+                        this.direct = L.div(L.$I`direct`,[
+                            // L.div("Item"),L.div("Item"),L.div("Item"),
+                        ])(),
+                        this.recent = L.div(L.$I`recent`,[
+                            // L.div("Item"),L.div("Item"),
+                        ])(),
+                    ]
+                )
+              ])
+            ,undefined,{bgId:"finderBackground"});
 
-                // make pages default selection
-            this.modeChoice = L.select(L.$I`modeChoice`,{//style:`flex:1;`,
-                    value:'pages',
-                    $change:async (e:Event)=>{
-                        let val = this.modeChoice.value as SearcherMode;
-                        this.mode = val || 'pages';
-                        this.Search();
-                    }
-                },[
-                    L.option({value:"pages"},"Pages")(),
-                    L.option({value:"blocks"},"Blocks")(),
-                    L.option({value:"tags"},"Tags")(),
-                    L.option({value:"tags-local"},"Tags local")(),
-                ])(),
-            ])(),
-            L.div(L.$I`finderSuggestions`,{
-                $bind:this, $click:this.__ItemClick.bind(this)
-            },[ 
-                this.direct = L.div(L.$I`direct`,[
-                    // L.div("Item"),L.div("Item"),L.div("Item"),
-                ])(),
-                this.recent = L.div(L.$I`recent`,[
-                    // L.div("Item"),L.div("Item"),
-                ])(),
-            ])()
-          ]).a(this.background);
-        // ]);
-        ///   MakeVisible }
-
-        this.background.setAttribute("style","width: 100%;height: calc(100vh - 8px);background-color: rgba(0, 0, 0, 0.5);position: absolute;");
-        this.background.addEventListener('click',(e:MouseEvent)=>{
-            if(e.target == this.background)
-                this.toggleVisible(false);
-            e.stopImmediatePropagation();
-            // e.preventDefault();
-        });
 
         this.toggleVisible(false);
     }
@@ -1942,7 +2633,11 @@ class Searcher {
             this.visible = setValue;
         else this.visible = !this.visible;
         
-        this.background.style.display = this.visible?'block':'none';
+        // this.background.style.display = this.visible?'block':'none';
+        if(this.visible)
+            this.modal.show();
+        else
+            this.modal.hide();
 
         if(this.visible==true){
             this.input.value = "";
@@ -1965,28 +2660,34 @@ class Searcher {
         }
         return L.div(name,{"data-id":id,"data-isBlock":isBlock.toString(),tabindex:-1})();
     }
-    async Search(){
-        let last = this.input.value.trim();
-        // if(last.indexOf(',')!=-1)
-        //     last = last.split(',').at(-1)!.trim();
-        // if(last == "") return;
+    Search(){
+        return (this.lastSearch = (async ()=>{
+            let last = this.input.value.trim();
+            // if(last.indexOf(',')!=-1)
+            //     last = last.split(',').at(-1)!.trim();
+            // if(last == "") return;
 
-        if(this.mode == null || this.mode == 'pages'){
-            this.directs = []
-            this.directs.push(... (await BlkFn.SearchPages(last,'includes')));
-            //this.directs.push(... (await BlkFn.SearchTags(last,'includes')));
-        }
-        // else if(this.mode[0]==SearcherMode.__at0_pages){
-        //     this.directs = await BlkFn.SearchPages(last,'includes');
-        // }else if(this.mode[0]==SearcherMode.__at0_tags){
-        //     this.directs = await BlkFn.SearchTags(last,'includes');
-        // }
+            if(this.mode == null || this.mode == 'pages'){
+                this.directs = [];
+                this.directs.push(... (await BlkFn.SearchPages(last,'includes')));
+            }else if(this.mode == 'tags'){
+                this.directs = [];
+                this.directs.push(... (await BlkFn.SearchTags(last,'includes')));
+            }else if(this.mode == 'pages & global-tags'){
+                this.directs = [];
+                this.directs.push(... (await BlkFn.SearchPages(last,'includes')));
+                this.directs.push(... (await BlkFn.SearchTags(last,'includes')));
+            }else{
+                this.directs = [];
+                this.recents = [];
+            }
 
-        this.direct.innerHTML = "";
-        this.direct.append(
-            ... (await Promise.all(this.directs.map((id)=>(this.makeItem(id)))))
-        );
-        // this.directs = TAGS.filter(t=>t.name.includes(this.input.value));
+            this.direct.innerHTML = "";
+            this.direct.append(
+                ... (await Promise.all(this.directs.map((id)=>(this.makeItem(id)))))
+            );
+            // this.directs = TAGS.filter(t=>t.name.includes(this.input.value));
+        })());
     }
     // async Submit(){
     //     let items = this.input.value.trim().split(',').map(v=>v.trim());
@@ -2005,8 +2706,8 @@ class Searcher {
     // }
     __ItemClick(event:MouseEvent){
         let item:HTMLElement = event.target as HTMLElement;
+        if(item.hasAttribute('data-id')==false) return; // in case finderSuggestions element was clicked.
         if(item == this.recent || item == this.direct) return;
-
         let isBlock = item.getAttribute('data-isBlock')=='true';
         let id = item.getAttribute('data-id')!;
         
@@ -2060,6 +2761,387 @@ RegClass(SearchStatistics);
 
 
 //######################
+// File: client/2/Tagger.ts
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/2/Tagger.ts
+//######################
+
+
+// type Quill = any;
+// declare var Quill : Quill;
+declare var LEEJS : any;
+
+type TaggerSearcherMode = 'tags'|'tags-local';
+class Tagger {
+    visible:boolean;
+
+    input:HTMLInputElement;
+    tags:HTMLElement;
+    finder:HTMLElement;
+    modal:Html_Modal;
+    
+    direct:HTMLElement;
+    recent:HTMLElement;
+    modeChoice:HTMLInputElement;
+
+    directs:string[];
+    recents:string[];
+    mode:  TaggerSearcherMode; //null|any;
+
+    lastSearch : Promise<any>|null;
+
+    selected_block_visual : Block_Visual | null;
+
+    constructor(){
+        this.visible = true;
+        this.directs = [];
+        this.recents = [];
+        this.mode = 'tags';
+        let L = LEEJS;
+        this.lastSearch = null;
+
+        this.selected_block_visual = null;
+
+        this.modal = new Html_Modal();
+        this.modal.cb_onBgClick = ()=>{this.toggleVisible(false);}
+        this.modal.createElements(
+            this.finder = L.div({class:"finder bg-white p-2"}/* rounded-2xl shadow-xl max-w-lg w-full"}*/,[
+
+                L.div({style:`display:flex;alignItems:center;`},[
+                    this.input = L.input(L.$I`finderSearch.mx-2`,{type:"text",style:`flex:1;`,                    
+                        $input:(e:InputEvent)=>{
+                            this.Search();
+                            //TODO 
+                            WARN("throttle searches so you cancel previous searches (if unfinished)");
+                        },
+                    //L.div(L.$I`finderSearch.mx-2`,{style:`flex:1;`,
+                        $keydown:async (e:KeyboardEvent)=>{
+                            if(e.key == 'ArrowDown'){
+                                e.preventDefault();
+                                e.stopImmediatePropagation();
+                                if(this.direct.children.length>0)
+                                    (this.direct.children[0] as HTMLElement).focus();
+                            }else if(e.key=="Enter"){
+                                e.preventDefault();
+                                e.stopImmediatePropagation();
+                                let name = (this.input.value || "").trim();
+                                if(this.mode=='tags'){
+                                    await this.lastSearch;
+                                    let ids = (await Promise.all(this.directs.map(async id=>{
+                                        if((await _TAGS[id]!.getName()) == name){
+                                            return id;
+                                        }else return undefined;
+                                    }))).filter(s=>s!==undefined);
+                                    
+                                    let tagId :Id|null= null;
+                                    if(ids.length==0){
+                                        //no exact matches, make new.
+                                        tagId = (await Tag.new(name)).id;
+                                        
+                                    }else if(ids.length==1){
+                                        //exact match, open existing
+                                        tagId = ids[0];
+                                    }else{
+                                        throw Error("Multiple same name tags found:"+ids.toString());
+                                    }
+                                    
+                                    await this.addTag(tagId);
+                                    this.input.value = "";
+                                    this.input.focus();
+                                    await this.loadExistingTags();                                    
+                                    //this.toggleVisible(false);
+                                }else throw Error("Unknown mode");
+                            }
+                        }})(),
+    
+                    // make pages default selection
+                    this.modeChoice = L.select(L.$I`modeChoice.bg-white.mr-2`,{//style:`flex:1;`,
+                            value:'tags',
+                            $change:async (e:Event)=>{
+                                let val = this.modeChoice.value as TaggerSearcherMode;
+                                this.mode = val || 'tags';
+                                this.Search();
+                            }
+                        },[
+                            L.option({value:"tags"},"Tags"),
+                            L.option({value:"tags-local"},"Tags local"),
+                    ])(),
+                ]),
+                (this.tags = L.div()()),
+                L.div(L.$I`finderSuggestions`,{
+                        $bind:this, $click:this.__ItemClick.bind(this)
+                    },[ 
+                        this.direct = L.div(L.$I`direct`,[
+                            // L.div("Item"),L.div("Item"),L.div("Item"),
+                        ])(),
+                        this.recent = L.div(L.$I`recent`,[
+                            // L.div("Item"),L.div("Item"),
+                        ])(),
+                    ]
+                )
+              ])()
+            ,undefined,{bgId:"taggerBackground"});
+        /*
+        this.input = new Quill(this.finder.querySelector('.finderSearch'),
+                        {modules:{toolbar:false},placeholder:"",theme:'snow'});
+        
+        //$click:(e:MouseEvent)=>{e.stopImmediatePropagation();},
+        let waitForSelectionChange = false; // first character 
+        let text = "";
+        
+        this.input.on('editor-change',async (eventName:string, ...args:any)=>{
+            console.log(eventName,args[2]);
+            if(args[2]=='api'||args[1]=='api') return;    
+            if(eventName=='selection-change' && waitForSelectionChange){
+                waitForSelectionChange = false;
+                console.warn("SEL UPD",`'${text}'`,this.input.getSelection());
+                let selection = this.input.getSelection();
+
+                // all whitespace to spaces 
+                // text = text.replace(/\s+/g,' ');
+
+                console.warn("SEL UPD2",`'${text}'`,this.input.getSelection());
+                await this.updateQuill(text);
+                if(selection) this.input.setSelection(selection,'api');
+                this.Search();
+            }else if(eventName=='text-change'){
+                waitForSelectionChange = true;
+                text = this.input.getText().replace(/\s+/g,' ');
+                console.warn(text);
+            }
+            //TODO 
+            WARN("throttle searches so you cancel previous searches (if unfinished)");
+        });
+        */
+        
+
+
+        this.toggleVisible(false);
+    }
+    async loadExistingTags(){
+        let tags = await this.getExistingTags();
+        let newTagBtn = (name:string,id:Id)=>LEEJS.div({$click:async (e:MouseEvent)=>{
+                //remove this tag..
+                if(!confirm("You want to remove tag "+name+" ?"))return;
+                await BlkFn.RemoveTagFromBlock((await this.getBlock()).id,id);                
+                await this.loadExistingTags();
+            },style:"margin:3px;display:inline-block;background-color:lightblue;padding:3px;","data-id":id},name);
+        this.tags.innerHTML = "";
+        tags.forEach(t=> newTagBtn(t.name,t.tag.id)(this.tags)  );
+    }
+    async getExistingTags(){
+        let b = await this.getBlock();
+        let namePromises:Promise<string>[] = [];
+        let existingTags:{tag:Tag,name:string}[] = 
+            (await Promise.all(b.tags.map(tId=>TAGS(tId))))
+            .map((tag,i)=>( 
+                (void(namePromises[i]=tag.getName())), 
+                ({tag:tag,name:""})
+            ));
+        //now that they are all finished, we can assign awaited promises to .name
+        for(let i = 0; i <existingTags.length; i++){
+            existingTags[i].name = await namePromises[i];
+        }
+        return existingTags;
+    }
+    /*
+    async tags_to_string(tagIds:Id[]):Promise<string>{
+        return (await Promise.all(
+            (await Promise.all(tagIds.map(tId=>TAGS(tId)))).map(tag=>tag.getName())
+        )).join('  ');
+    }
+    */
+    async getBlock():Promise<Block>{
+        return await BLOCKS(this.selected_block_visual!.blockId);
+    }
+/*
+    async updateQuill(tagsString:string){
+        let existingTags = await this.getExistingTags();
+
+        // let tagNames:string[] = []; //tagsString.trim().split(' ').map(v=>v.trim()).filter(s=>s);
+        
+        
+        let delta :any[] = [];
+        //delta.push({insert:tagNames[i], attributes:{color:'green'}});
+        const insert=(name:string,color:string,tooltip:string)=>delta.push({
+            insert: name, attributes:{  color }
+          });
+        
+        
+        let curName = "";
+        let curSpaces = "";
+        const addName = async ()=>{
+            if(curName.trim().length==0)
+                return;
+
+            let tags = await BlkFn.SearchTags(curName,'exact');
+            if(tags.length==0){
+                insert(curName,"green","This will make a new tag.");
+            }else{
+                //tag already exists. Is it already on the block?
+                let tagId = tags[0];
+                let alreadyExists = existingTags.find(et=>et.tag.id==tagId);
+                if(alreadyExists){
+                    insert(curName,"white","Block already tagged with this tag.");
+                }else{
+                    insert(curName,"blue","This tag exists but is not on this block (will be added).");
+                }
+            }
+
+            curName = "";
+        };
+        const addSpaces = ()=>{
+            if(curSpaces.length==0)
+                return;
+            delta.push({insert: curSpaces});
+            curSpaces = "";
+        };
+        for(let i = 0; i < tagsString.length; i++){
+            if(tagsString[i]==' '){
+                await addName();
+                curSpaces+=' ';    
+            }
+            else{
+                addSpaces();
+                curName+=tagsString[i];
+            }
+        }
+        await addName();
+        addSpaces();
+            
+
+        //let tags:Id[][] = await Promise.all(tagNames.map(tn=>BlkFn.SearchTags(tn,'exact')));
+        // for(let i = 0; i < tagNames.length; i++){
+        //     if(tags[i].length==0){
+        //         insert(tagNames[i],"green","This will make a new tag.");
+        //     }else{
+        //         //tag already exists. Is it already on the block?
+        //         let tagId = tags[i][0];
+        //         let alreadyExists = existingTags.find(et=>et.tag.id==tagId);
+        //         if(alreadyExists){
+        //             insert(tagNames[i],"white","Block already tagged with this tag.");
+        //         }else{
+        //             insert(tagNames[i],"blue","This tag exists but is not on this block (will be added).");
+        //         }
+        //     }
+        //     // delta.push({insert:tagNames[i], attributes:{color:'green'}});
+        // }
+        // return delta;
+        console.warn(delta);
+        this.input.setContents(delta,'silent');
+    }
+*/
+    async makeNewTag(tagName:string){
+        if(!prompt(`Make new tag '${tagName}'?`))return;
+        if(prompt("Global (or local)?")){
+            Tag.new(tagName);
+        }else{
+            throw Error("Making local tags not implemented.");
+        }
+    }
+    async toggleVisible(setValue?:boolean, selected_block2?:Block_Visual){
+        if(setValue!==undefined)
+            this.visible = setValue;
+        else this.visible = !this.visible;
+
+        this.selected_block_visual = selected_block2 ?? null;
+        
+        // this.background.style.display = this.visible?'block':'none';
+        if(this.visible)
+            this.modal.show();
+        else
+            this.modal.hide();
+
+        if(this.visible==true){
+            if(this.selected_block_visual==null) throw Error("Toggling tagger on null selected block?");
+            //let b = await BLOCKS(this.selected_block_visual!.blockId);
+            //await this.updateQuill(await this.tags_to_string(b.tags));
+            await this.loadExistingTags();           
+            this.input.value = "";            
+            this.input.focus();
+            //this.input.setSelection(99999);
+            this.Search();
+        }else{
+            selectBlock(selected_block);
+        }
+    }
+    async addTag(tagId:Id){
+        let b = await this.getBlock();
+        console.warn(b,b.id);
+        if(b){
+            await BlkFn.TagBlock(tagId!,b.id);
+            //b.tags.push(tag.id);
+            //b.DIRTY();
+        }
+    }
+    async makeItem(id:Id) : Promise<HTMLElement>{
+        let L = LEEJS;
+        let name = "<:NONAME:>";
+        let isBlock = true;
+        if(_BLOCKS[id]===undefined){
+            isBlock = false;
+            name = await (_TAGS[id]!.getName());
+        }else{
+            if(_BLOCKS[id]!.pageTitle) 
+                name = _BLOCKS[id]!.pageTitle;
+        }
+        return L.div(name,{"data-id":id,"data-isBlock":isBlock.toString(),tabindex:-1})();
+    }
+    Search(){
+        return (this.lastSearch = (async ()=>{
+            let last = this.input.value.trim();
+            if(last.indexOf(',')!=-1)
+                last = last.split(',').at(-1)!.trim();
+            // if(last == "") return;
+
+            if(this.mode == 'tags'){
+                this.directs = [];
+                this.directs.push(... (await BlkFn.SearchTags(last,'includes')));
+            }else{
+                this.directs = [];
+                this.recents = [];
+            }
+
+            this.direct.innerHTML = "";
+            this.direct.append(
+                ... (await Promise.all(this.directs.map((id)=>(this.makeItem(id)))))
+            );
+            // this.directs = TAGS.filter(t=>t.name.includes(this.input.value));
+        })());
+    }
+    // async Submit(){
+    //     let items = this.input.value.trim().split(',').map(v=>v.trim());
+    //     if(this.mode[0]==SearcherMode.__at0_pages){
+        
+    //     }else if(this.mode[0]==SearcherMode.__at0_tags){
+        
+    //     }
+    // }
+
+    // AddRecent(){
+
+    // }
+    // ItemSelected(){
+
+    // }
+    async __ItemClick(event:MouseEvent){
+        let item:HTMLElement = event.target as HTMLElement;
+        if(item.hasAttribute('data-id')==false) return; // in case finderSuggestions element was clicked.
+        if(item == this.recent || item == this.direct) return;
+
+        let isBlock = item.getAttribute('data-isBlock')=='true';
+        let id = item.getAttribute('data-id')!;
+        
+        await this.addTag(id);
+        this.input.value = "";
+        this.input.focus();
+        this.loadExistingTags();
+        this.Search();
+        //this.toggleVisible(false);
+    }
+}
+
+
+//######################
 // File: client/3/1client.ts
 // Path: file:///data/_Projects/pboardNotes_latest/src/client/3/1client.ts
 //######################
@@ -2068,17 +3150,34 @@ RegClass(SearchStatistics);
 var PROJECT = new ProjectClass();
 var SEARCHER = (new Searcher());
 var SEARCH_STATISTICS = new SearchStatistics();
+var TAGGER = (new Tagger());
 
 var PAGES : {[id:Id]:true} = {}; //all pages
 
 var _BLOCKS : {[id:Id]:Block|null} = {};  // all blocks
+function BLOCKS_assertId(id:Id){
+    if(typeof(id)!='string')
+        throw Error(`Invalid (typeof != string) Block id ${id}`);
+    if(_BLOCKS[id]===undefined)
+        throw Error(`Invalid (non existant) Block id ${id}`);
+    return id;
+}
 async function BLOCKS( id :Id , depth=1 ):Promise<Block>{
+    BLOCKS_assertId(id);
     if(_BLOCKS[id]===null) await loadBlock(id,depth);
     return _BLOCKS[id]!;
 }
 
 var _TAGS : {[id:Id]:Tag|null} = {};  // all tags
+function TAGS_assertId(id:Id){
+    if(typeof(id)!='string')
+        throw Error(`Invalid (typeof != string) Tag id ${id}`);
+    if(_TAGS[id]===undefined)
+        throw Error(`Invalid (non existant) Tag id ${id}`);
+    return id;
+}
 async function TAGS( id :Id , depth=1 ):Promise<Tag>{
+    TAGS_assertId(id);
     if(_TAGS[id]===null) await loadTag(id,depth);
     return _TAGS[id]!;
 }
@@ -2208,7 +3307,7 @@ async function loadBlock(blockId:Id,depth:number) {
     }  
 }
 async function loadTag(blockId:Id,depth:number) {
-    TODO("LoadTag");
+    // TODO("LoadTag");
     // path = AttrPath.parse(path);
     console.log("Loading tag:",blockId);
     let newBLOCKS_partial = await CMsg_loadTag({id:blockId,depth});//await rpc(`client_loadBlock`,blockId,depth);
@@ -2227,7 +3326,7 @@ async function loadTag(blockId:Id,depth:number) {
 // Path: file:///data/_Projects/pboardNotes_latest/src/client/3/2Blocks.ts
 //######################
 
-
+declare type QuillDelta = {unknown_but_very_special:true};
 
 class Block{
     static _serializable_default = {text:"",children:[],tags:[],attribs:{},refCount:1,collapsed:false};
@@ -2236,7 +3335,7 @@ class Block{
     refCount:number;
     
     pageTitle?:string;
-    text:string;
+    text:string|QuillDelta;
 
     children:Id[];
     tags:Id[];
@@ -2304,7 +3403,7 @@ class Tag{
     name : string | null; // null ako preuzima ime od rootBlock.
     rootBlock? : Id; //ako je tag baziran na bloku
 
-    parentTagId:Id;
+    parentTagId:Id; // could be tag, or page (if page then its page local)
     childrenTags:Id[];
     blocks:Id[];
     attribs:objectA;
