@@ -1339,6 +1339,19 @@ async function selectBlock(b:Block_Visual|null,editText:boolean|null=null){
 
 
 //######################
+// File: client/1View/9Logseq/2TitleBar.tsx
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/1View/9Logseq/2TitleBar.tsx
+//######################
+
+
+function TitleBar() {
+    return React.createElement('div', { style: { background: '#eee', padding: '10px' } },
+      React.createElement('button', null, 'Add'),
+      React.createElement('button', null, 'Save')
+    );
+  }
+
+//######################
 // File: client/1View/9Logseq/3Page_Visual.ts
 // Path: file:///data/_Projects/pboardNotes_latest/src/client/1View/9Logseq/3Page_Visual.ts
 //######################

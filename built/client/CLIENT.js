@@ -1027,22 +1027,48 @@ async function selectBlock(b, editText = null) {
         }, 2));
 }
 //######################
+// File: client/1View/9Logseq/2TitleBar.tsx
+// Path: file:///data/_Projects/pboardNotes_latest/src/client/1View/9Logseq/2TitleBar.tsx
+//######################
+function TitleBar() {
+    return React.createElement('div', {
+        style: {
+            background: '#eee',
+            padding: '10px'
+        }
+    }, React.createElement('button', null, 'Add'), React.createElement('button', null, 'Save'));
+}
+//######################
 // File: client/1View/9Logseq/3Page_Visual.ts
 // Path: file:///data/_Projects/pboardNotes_latest/src/client/1View/9Logseq/3Page_Visual.ts
 //######################
 /*
 User is viewing a single page.
-*/ class Page_Visual {
+*/ const STATIC = {
+    _body: document.body,
+    style_highlighter: document.getElementById('highlighterStyle'),
+    blocks: document.getElementById('blocks'),
+    pageView: document.getElementById('pageView'),
+    pageView_Title: document.getElementById('pageView-title')
+};
+class Page_Visual {
     pageId;
     children;
     childrenHolderEl;
     alreadyRendered;
     titleEl = null;
+    reactRoot;
     constructor(){
         this.pageId = "";
         this.children = [];
         this.alreadyRendered = false;
         this.childrenHolderEl = null;
+        // const toolbarRoot = ReactDOM.createRoot(document.getElementById('toolbar'));
+        // toolbarRoot.render(React.createElement(Toolbar));
+        // const treeRoot = ReactDOM.createRoot(document.getElementById('blocks'));
+        // treeRoot.render(React.createElement(TreeView));
+        this.reactRoot = ReactDOM.createRoot(STATIC.pageView);
+        this.reactRoot.render(React.createElement(TitleBar));
     }
     setDocumentURI() {
         // change document url to have hash "#?pageId=<pageId>"
@@ -1226,13 +1252,6 @@ const ACT /*"Actions"*/  = {
     isEvHandled (ev) {
         return ev.handled_already; // || (this.__handledEvents.indexOf(ev)!==-1);
     }
-};
-const STATIC = {
-    _body: document.body,
-    style_highlighter: document.getElementById('highlighterStyle'),
-    blocks: document.getElementById('blocks'),
-    pageView: document.getElementById('pageView'),
-    pageView_Title: document.getElementById('pageView-title')
 };
 function propagateUpToBlock(el, checkSelf = true) {
     // ovo bi moglo putem el.closest(query) umesto da rucno idem parentElement
@@ -2663,6 +2682,7 @@ class Tagger {
 // File: client/3/1client.ts
 // Path: file:///data/_Projects/pboardNotes_latest/src/client/3/1client.ts
 //######################
+const { useState, useEffect, useReducer } = React;
 var PROJECT = new ProjectClass();
 var SEARCHER = new Searcher();
 var SEARCH_STATISTICS = new SearchStatistics();

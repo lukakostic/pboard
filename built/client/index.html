@@ -268,11 +268,16 @@
           </div>
       </details>
 
-        <!-- Klasa .doesnt-cancel-selection znaci da se ne deselektuju selektovani blokovi kad kliknes ovo ili bilo sta ispod njega (html nested child)-->
-        <input id="pageView-title" type="text" placeholder="Page Title" class="doesnt-cancel-selection form-control" style="display:none; width: 100%; margin-bottom: 15px;"/>
-        <div id="blocks"></div>
+      <div id="toolbar"></div>
+
+      <!-- Klasa .doesnt-cancel-selection znaci da se ne deselektuju selektovani blokovi kad kliknes ovo ili bilo sta ispod njega (html nested child)-->
+      <input id="pageView-title" type="text" placeholder="Page Title" class="doesnt-cancel-selection form-control" style="display:none; width: 100%; margin-bottom: 15px;"/>
+      <div id="blocks"></div>
+
     </div>
 
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="/client/CLIENT.js" type="module"></script>
 
 </body>

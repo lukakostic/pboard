@@ -1,3 +1,4 @@
+const { useState, useEffect, useReducer } = React;
 
 var PROJECT = new ProjectClass();
 var SEARCHER = (new Searcher());

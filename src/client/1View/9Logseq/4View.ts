@@ -62,13 +62,6 @@ const ACT /*"Actions"*/ = {
     }
 
 };
-const STATIC = {
-    _body : document.body,
-    style_highlighter : document.getElementById('highlighterStyle')!,
-    blocks : document.getElementById('blocks')!,
-    pageView : document.getElementById('pageView')!,
-    pageView_Title : document.getElementById('pageView-title')!,
-};
 
 function propagateUpToBlock(el:HTMLElement,checkSelf=true):Block_Visual|null{
     // ovo bi moglo putem el.closest(query) umesto da rucno idem parentElement

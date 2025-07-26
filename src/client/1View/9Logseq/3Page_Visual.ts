@@ -2,6 +2,13 @@
 User is viewing a single page.
 */
 
+const STATIC = {
+    _body : document.body,
+    style_highlighter : document.getElementById('highlighterStyle')!,
+    blocks : document.getElementById('blocks')!,
+    pageView : document.getElementById('pageView')!,
+    pageView_Title : document.getElementById('pageView-title')!,
+};
 class Page_Visual{
     pageId : Id;
     children : Block_Visual[];
@@ -10,12 +17,22 @@ class Page_Visual{
 
     titleEl : HTMLInputElement|null = null; // title element, if board has a title.
 
+    reactRoot : ReactDOM.Root;//|null = null; // React root for this page
     constructor(){
         this.pageId = "";
         this.children = [];
         this.alreadyRendered = false;
 
         this.childrenHolderEl = null as any;
+
+
+        // const toolbarRoot = ReactDOM.createRoot(document.getElementById('toolbar'));
+        // toolbarRoot.render(React.createElement(Toolbar));
+        // const treeRoot = ReactDOM.createRoot(document.getElementById('blocks'));
+        // treeRoot.render(React.createElement(TreeView));
+
+        this.reactRoot = ReactDOM.createRoot(STATIC.pageView);
+        this.reactRoot.render(React.createElement(TitleBar));
     }
 
     setDocumentURI(){

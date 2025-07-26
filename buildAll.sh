@@ -8,15 +8,15 @@ shopt -s extglob
 #bash ./src_buildSys/execute.sh    ### ne treba nam vise codegen
 
 # (cat -s ./src/*.{ts,js} ./src/client/*.{ts,js} ./src/client/*/*.{ts,js} ./src/client/*/*/*.{ts,js} > 
-( deno run --allow-read concatDeno.ts ./src/ --extensions .ts.js --depth 4 --excludePaths ./src/server ./src/external > ./built/client/CLIENT.ts ;\
-npx swc ./built/client/CLIENT.ts -o ./built/client/CLIENT.js ) &
+( deno run --allow-read concatDeno.ts ./src/ --extensions .ts.js.tsx --depth 4 --excludePaths ./src/server ./src/external > ./built/client/CLIENT.tsx ;\
+npx swc ./built/client/CLIENT.tsx -o ./built/client/CLIENT.js ) &
 
 # (cat -s ./src/*.{ts,js} ./src/server/*.{ts,js} ./src/server/*/*.{ts,js} ./src/server/*/*/*.{ts,js} > ./built/server/SERVER.ts ;\
-( deno run --allow-read concatDeno.ts ./src/ --extensions .ts.js --depth 4 --excludePaths ./src/client ./src/external > ./built/server/SERVER.ts ;\
-npx swc ./built/server/SERVER.ts -o ./built/server/SERVER.js ) &
+( deno run --allow-read concatDeno.ts ./src/ --extensions .ts.js.tsx --depth 4 --excludePaths ./src/client ./src/external > ./built/server/SERVER.ts ;\
+npx swc ./built/server/SERVER.tsx -o ./built/server/SERVER.js ) &
 
 
-(cp ./src/client/*.!(ts|js) ./built/client/) &
+(cp ./src/client/*.!(ts|js|tsx) ./built/client/) &
 
 wait #for above & to finish
 
