@@ -1390,6 +1390,15 @@ class Page_Visual{
         // treeRoot.render(React.createElement(TreeView));
 
         this.reactRoot = ReactDOM.createRoot(STATIC.pageView);
+        return React.createElement('div', null,
+            React.createElement(TitleBar),
+            // React.createElement('h2', null, 'Global Object Tree'),
+        
+            // Render all objects as roots
+            objects.map((obj, index) =>
+              React.createElement(ObjectNode, { key: obj.id, index })
+            )
+          );
         this.reactRoot.render(React.createElement(TitleBar));
     }
 
